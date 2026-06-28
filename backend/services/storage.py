@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from config import settings
+from services import heif_support  # noqa: F401 — registers HEIC opener with Pillow
 
 
 async def save_upload(file: UploadFile) -> tuple[Path, Path | None, int]:

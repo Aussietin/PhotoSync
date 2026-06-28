@@ -2,6 +2,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from services import heif_support  # noqa: F401 — registers HEIC opener with Pillow
+
 
 async def process_photo(file_path: Path, original_filename: str | None = None) -> dict[str, Any]:
     """Extract metadata, perceptual hash, quality score, and screenshot flag."""

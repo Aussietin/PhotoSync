@@ -93,24 +93,23 @@ async def import_folder(body: FolderImportIn, db: AsyncSession = Depends(get_db)
     pattern = "**/*" if body.recursive else "*"
     files = [p for p in folder.glob(pattern) if p.is_file() and is_image(p.name)]
 
-    imported, skipped, duplicates = 0, 0, 0
+    # Preload already-imported paths in one query instead of one-per-file.
+    known = set((await db.execute(select(Photo.file_path))).scalars().all())
+
+    from services.storage import _make_thumbnail
+    import uuid
+
+    imported, skipped = 0, 0
     for file_path in files:
-        # Skip already-imported paths
-        existing = await db.execute(select(Photo).where(Photo.file_path == str(file_path)))
-        if existing.scalar_one_or_none():
+        if str(file_path) in known:
             skipped += 1
             continue
 
         metadata = await process_photo(file_path, original_filename=file_path.name)
-        dup_id = await find_duplicate(db, metadata.get("perceptual_hash"))
-
-        # Generate thumbnail for imported file
-        from services.storage import _make_thumbnail
-        import uuid
         stem = uuid.uuid4().hex
         thumb_path = await _make_thumbnail(file_path, stem)
 
-        photo = Photo(
+        db.add(Photo(
             filename=file_path.name,
             original_filename=file_path.name,
             file_path=str(file_path),
@@ -127,16 +126,21 @@ async def import_folder(body: FolderImportIn, db: AsyncSession = Depends(get_db)
             perceptual_hash=metadata.get("perceptual_hash"),
             quality_score=metadata.get("quality_score"),
             is_screenshot=metadata.get("is_screenshot", False),
-            is_duplicate=dup_id is not None,
-            duplicate_of_id=dup_id,
-        )
-        db.add(photo)
-        await db.commit()
+        ))
+        known.add(str(file_path))
         imported += 1
-        if dup_id:
-            duplicates += 1
 
-    return {"imported": imported, "skipped": skipped, "duplicates_found": duplicates}
+    await db.commit()  # single commit for the whole batch
+
+    # Auto-cluster duplicates across the whole library now that import is done.
+    from services.deduplicator import rescan_duplicates
+    dup_summary = await rescan_duplicates(db) if imported else {"duplicates": 0}
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "duplicates_found": dup_summary.get("duplicates", 0),
+    }
 
 
 # ── List ──────────────────────────────────────────────────────────────────────
