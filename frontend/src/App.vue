@@ -15,7 +15,9 @@
           <NavLink to="/search">Search</NavLink>
           <NavLink to="/map">Map</NavLink>
           <NavLink to="/stats">Stats</NavLink>
+          <NavLink to="/screenshots">Screenshots</NavLink>
           <NavLink to="/duplicates">Dupes</NavLink>
+          <NavLink to="/triage">Triage</NavLink>
           <NavLink to="/trash">Trash</NavLink>
           <NavLink to="/import">Import</NavLink>
         </nav>

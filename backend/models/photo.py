@@ -48,6 +48,9 @@ class Photo(Base):
     # Quality score (0–1): higher = sharper + better exposed
     quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Classification
+    is_screenshot: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
     # User features
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

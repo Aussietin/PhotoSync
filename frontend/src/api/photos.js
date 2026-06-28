@@ -29,6 +29,16 @@ export const photosApi = {
   bulkDelete: (photo_ids) => api.post('/photos/bulk/delete', { photo_ids }),
   bulkFavorite: (photo_ids) => api.post('/photos/bulk/favorite', { photo_ids }),
   bulkRestore: (photo_ids) => api.post('/photos/bulk/restore', { photo_ids }),
+
+  // Screenshot detection
+  listScreenshots: (params) => api.get('/photos/screenshots', { params }),
+  scanScreenshots: () => api.post('/photos/scan-screenshots'),
+
+  // Duplicate groups
+  duplicateGroups: () => api.get('/photos/duplicate-groups'),
+
+  // Triage
+  triageQueue: (params) => api.get('/photos/triage-queue', { params }),
 }
 
 export const tagsApi = {

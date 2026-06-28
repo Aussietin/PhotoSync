@@ -48,6 +48,12 @@
       class="absolute bottom-1 left-1 bg-yellow-500 text-black text-xs font-bold px-1 rounded leading-tight"
     >DUP</span>
 
+    <!-- Screenshot badge -->
+    <span
+      v-if="photo.is_screenshot"
+      class="absolute bottom-1 left-1 bg-purple-500 text-white text-xs font-bold px-1 rounded leading-tight"
+    >SS</span>
+
     <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
   </div>
 </template>

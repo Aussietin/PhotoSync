@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Any
 
 
-async def process_photo(file_path: Path) -> dict[str, Any]:
-    """Extract metadata, perceptual hash, and quality score from an image."""
+async def process_photo(file_path: Path, original_filename: str | None = None) -> dict[str, Any]:
+    """Extract metadata, perceptual hash, quality score, and screenshot flag."""
     meta: dict[str, Any] = {}
 
     try:
@@ -20,6 +20,15 @@ async def process_photo(file_path: Path) -> dict[str, Any]:
         pass
 
     meta.update(_extract_exif(file_path))
+
+    from services.screenshot_detector import detect_screenshot
+    meta["is_screenshot"] = detect_screenshot(
+        width=meta.get("width"),
+        height=meta.get("height"),
+        camera_make=meta.get("camera_make"),
+        original_filename=original_filename or file_path.name,
+    )
+
     return meta
 
 

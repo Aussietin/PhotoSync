@@ -43,14 +43,15 @@ async def upload_photos(
 ):
     results = []
     for file in files:
+        orig_name = file.filename or file_path.name
         file_path, thumb_path, file_size = await save_upload(file)
-        metadata = await process_photo(file_path)
+        metadata = await process_photo(file_path, original_filename=orig_name)
 
         dup_id = await find_duplicate(db, metadata.get("perceptual_hash"))
 
         photo = Photo(
             filename=file_path.name,
-            original_filename=file.filename or file_path.name,
+            original_filename=orig_name,
             file_path=str(file_path),
             thumbnail_path=str(thumb_path) if thumb_path else None,
             file_size=file_size,
@@ -64,6 +65,7 @@ async def upload_photos(
             gps_lon=metadata.get("gps_lon"),
             perceptual_hash=metadata.get("perceptual_hash"),
             quality_score=metadata.get("quality_score"),
+            is_screenshot=metadata.get("is_screenshot", False),
             is_duplicate=dup_id is not None,
             duplicate_of_id=dup_id,
         )
@@ -99,7 +101,7 @@ async def import_folder(body: FolderImportIn, db: AsyncSession = Depends(get_db)
             skipped += 1
             continue
 
-        metadata = await process_photo(file_path)
+        metadata = await process_photo(file_path, original_filename=file_path.name)
         dup_id = await find_duplicate(db, metadata.get("perceptual_hash"))
 
         # Generate thumbnail for imported file
@@ -124,6 +126,7 @@ async def import_folder(body: FolderImportIn, db: AsyncSession = Depends(get_db)
             gps_lon=metadata.get("gps_lon"),
             perceptual_hash=metadata.get("perceptual_hash"),
             quality_score=metadata.get("quality_score"),
+            is_screenshot=metadata.get("is_screenshot", False),
             is_duplicate=dup_id is not None,
             duplicate_of_id=dup_id,
         )
@@ -379,6 +382,137 @@ async def bulk_restore(body: BulkIn, db: AsyncSession = Depends(get_db)):
     return {"restored": count}
 
 
+# ── Screenshots ───────────────────────────────────────────────────────────────
+
+@router.get("/screenshots")
+async def list_screenshots(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    offset = (page - 1) * per_page
+    q = (
+        select(Photo)
+        .where(Photo.is_screenshot == True, Photo.deleted_at.is_(None))  # noqa: E712
+        .options(selectinload(Photo.tags))
+        .order_by(Photo.created_at.desc())
+    )
+    total = (await db.execute(q.with_only_columns(func.count()).order_by(None))).scalar_one()
+    result = await db.execute(q.offset(offset).limit(per_page))
+    return {"total": total, "page": page, "per_page": per_page, "photos": [_serialize(p) for p in result.scalars().all()]}
+
+
+@router.post("/scan-screenshots")
+async def scan_screenshots(db: AsyncSession = Depends(get_db)):
+    """Retroactively run screenshot detection on all un-scanned photos."""
+    from services.screenshot_detector import detect_screenshot
+
+    result = await db.execute(select(Photo).where(Photo.deleted_at.is_(None)))
+    photos = result.scalars().all()
+    updated = 0
+    for photo in photos:
+        detected = detect_screenshot(
+            width=photo.width,
+            height=photo.height,
+            camera_make=photo.camera_make,
+            original_filename=photo.original_filename,
+        )
+        if detected != photo.is_screenshot:
+            photo.is_screenshot = detected
+            updated += 1
+    await db.commit()
+    total_screenshots = sum(1 for p in photos if p.is_screenshot)
+    return {"scanned": len(photos), "updated": updated, "total_screenshots": total_screenshots}
+
+
+# ── Duplicate groups ──────────────────────────────────────────────────────────
+
+@router.get("/duplicate-groups")
+async def duplicate_groups(db: AsyncSession = Depends(get_db)):
+    """Return originals that have at least one duplicate, with duplicates nested."""
+    # Find all photos that are originals with at least one duplicate pointing to them
+    dup_result = await db.execute(
+        select(Photo).where(Photo.is_duplicate == True, Photo.deleted_at.is_(None))  # noqa: E712
+        .options(selectinload(Photo.tags))
+    )
+    duplicates = dup_result.scalars().all()
+
+    # Group by duplicate_of_id
+    groups: dict[int, list[Photo]] = {}
+    for dup in duplicates:
+        if dup.duplicate_of_id:
+            groups.setdefault(dup.duplicate_of_id, []).append(dup)
+
+    if not groups:
+        return {"groups": []}
+
+    originals_result = await db.execute(
+        select(Photo).where(Photo.id.in_(list(groups.keys()))).options(selectinload(Photo.tags))
+    )
+    originals = {p.id: p for p in originals_result.scalars().all()}
+
+    output = []
+    for orig_id, dups in groups.items():
+        original = originals.get(orig_id)
+        if not original:
+            continue
+        # Suggest deleting lowest-quality duplicates (keep originals, delete dupes)
+        suggested = sorted(dups, key=lambda p: (p.quality_score or 0))
+        output.append({
+            "original": _serialize(original),
+            "duplicates": [_serialize(d) for d in dups],
+            "suggested_delete_ids": [d.id for d in suggested],
+        })
+
+    return {"groups": output, "total_groups": len(output), "total_duplicates": len(duplicates)}
+
+
+# ── Triage queue ──────────────────────────────────────────────────────────────
+
+@router.get("/triage-queue")
+async def triage_queue(
+    include_screenshots: bool = Query(True),
+    include_duplicates: bool = Query(True),
+    include_low_quality: bool = Query(True),
+    quality_threshold: float = Query(0.3, ge=0.0, le=1.0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return an ordered queue of photos that need a keep/delete decision."""
+    seen: set[int] = set()
+    queue: list[dict] = []
+
+    async def _fetch(condition) -> list[Photo]:
+        q = (
+            select(Photo)
+            .where(condition, Photo.deleted_at.is_(None), Photo.is_favorite == False)  # noqa: E712
+            .options(selectinload(Photo.tags))
+            .limit(500)
+        )
+        return (await db.execute(q)).scalars().all()
+
+    if include_screenshots:
+        for p in await _fetch(Photo.is_screenshot == True):  # noqa: E712
+            if p.id not in seen:
+                seen.add(p.id)
+                queue.append({**_serialize(p), "triage_reason": "screenshot"})
+
+    if include_duplicates:
+        for p in await _fetch(Photo.is_duplicate == True):  # noqa: E712
+            if p.id not in seen:
+                seen.add(p.id)
+                queue.append({**_serialize(p), "triage_reason": "duplicate"})
+
+    if include_low_quality:
+        for p in await _fetch(
+            (Photo.quality_score <= quality_threshold) & Photo.quality_score.is_not(None)
+        ):
+            if p.id not in seen:
+                seen.add(p.id)
+                queue.append({**_serialize(p), "triage_reason": "low_quality"})
+
+    return {"queue": queue, "total": len(queue)}
+
+
 # ── Serialiser ────────────────────────────────────────────────────────────────
 
 def _serialize(p: Photo) -> dict:
@@ -395,6 +529,7 @@ def _serialize(p: Photo) -> dict:
         "tags": [{"id": t.id, "name": t.name, "source": t.source} for t in (p.tags or [])],
         "ai_tags": json.loads(p.ai_tags) if p.ai_tags else [],
         "is_duplicate": p.is_duplicate,
+        "is_screenshot": p.is_screenshot,
         "is_favorite": p.is_favorite,
         "quality_score": p.quality_score,
         "notes": p.notes,
