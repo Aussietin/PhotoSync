@@ -40,11 +40,12 @@ async def _seed(session, photos: list[Photo]):
 # ── cleanup-summary ───────────────────────────────────────────────────────────
 
 async def test_cleanup_summary_counts(client, db_session):
+    # camera_make="Apple" = real iPhone shot, should NOT match meme filter
     await _seed(db_session, [
-        _photo(file_path="/fake/s1.jpg", is_screenshot=True),
-        _photo(file_path="/fake/s2.jpg", is_screenshot=True),
-        _photo(file_path="/fake/d1.jpg", is_duplicate=True),
-        _photo(file_path="/fake/n1.jpg"),  # normal, not a candidate
+        _photo(file_path="/fake/s1.jpg", is_screenshot=True, camera_make="Apple"),
+        _photo(file_path="/fake/s2.jpg", is_screenshot=True, camera_make="Apple"),
+        _photo(file_path="/fake/d1.jpg", is_duplicate=True, camera_make="Apple"),
+        _photo(file_path="/fake/n1.jpg", camera_make="Apple"),  # normal iPhone shot
     ])
 
     resp = await client.get("/api/photos/cleanup-summary")
@@ -52,6 +53,7 @@ async def test_cleanup_summary_counts(client, db_session):
     data = resp.json()
     assert data["screenshots"]["count"] == 2
     assert data["duplicates"]["count"] == 1
+    assert data["memes"]["count"] == 0
     assert data["total_reclaimable"]["count"] == 3
 
 
@@ -139,6 +141,30 @@ async def test_cleanup_low_quality_filter(client, db_session):
     assert bad.deleted_at is not None
     assert ok.deleted_at is None
     assert no_score.deleted_at is None
+
+
+async def test_cleanup_meme_filter(client, db_session):
+    """No camera EXIF + not screenshot = meme/received image."""
+    meme = _photo(file_path="/fake/meme.jpg")  # no camera_make → meme
+    real = _photo(file_path="/fake/real.jpg", camera_make="Apple", camera_model="iPhone 15")
+    screenshot = _photo(file_path="/fake/scr.jpg", is_screenshot=True)  # excluded from memes
+    await _seed(db_session, [meme, real, screenshot])
+
+    resp = await client.get("/api/photos/cleanup-summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["memes"]["count"] == 1  # only the no-EXIF non-screenshot photo
+
+    resp2 = await client.post("/api/photos/cleanup", json={"memes": True})
+    assert resp2.status_code == 200
+    assert resp2.json()["deleted"] == 1
+
+    await db_session.refresh(meme)
+    await db_session.refresh(real)
+    await db_session.refresh(screenshot)
+    assert meme.deleted_at is not None
+    assert real.deleted_at is None
+    assert screenshot.deleted_at is None  # screenshot not caught by meme filter
 
 
 async def test_cleanup_no_category_rejected(client, db_session):

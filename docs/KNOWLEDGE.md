@@ -108,21 +108,35 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 ### Stage 3 — Make cleanup genuinely "smart" — partial
 - [x] Burst grouping by capture-time proximity + visual similarity (keep-the-best).
 - [x] More cull categories: dark, overexposed, low-res (wired into cleanup).
-- [ ] memes/received images + documents/receipts categories.
+- [x] **Memes/received images**: no-EXIF + not-screenshot filter catches WhatsApp
+      forwards, meme downloads, etc. Pure SQL condition, no new DB column.
+- [ ] Documents/receipts category (future).
 - [ ] **Real AI tagging + semantic search** (still the color-heuristic placeholder;
       needs an embedding model — deferred, can't validate a model in this env).
 - [ ] Face grouping (future).
 
-### Stage 4 — Safety, trust & polish ✅ (core)
-- [x] Tests: screenshot detector + BK-tree clustering (pytest). Expand coverage next.
+### Stage 4 — Safety, trust & polish ✅
+- [x] Tests: screenshot detector + BK-tree clustering + 36 integration tests
+      covering cleanup, undo, meme filter, photo CRUD, bulk ops (all green).
+- [x] **Alembic migrations**: `init_db()` runs `alembic upgrade head` on startup.
+      `manage.py` helper for makemigration/stamp/history. Existing DBs: run
+      `python manage.py stamp` once, then future migrations apply cleanly.
 - [x] Trash retention/auto-empty (`/empty-trash?older_than_days=`), deletion audit
       log (`DeletionLog`), undo-last-cleanup (batch token + `/undo-cleanup`).
 - [x] Optional API token auth (`API_TOKEN` env → `X-API-Token`).
-- [ ] Broader API/integration test coverage; migrations (Alembic) before real data.
+- [x] **iOS Shortcut recipe** documented in ExportView (step-by-step using the
+      Shortcuts app + deletion-plan CSV to delete culled photos on the phone).
+
+### Bug fixes shipped (were silent production failures, caught by tests)
+- Route shadowing: `GET /cleanup-summary`, `/cleanup-history`, `/screenshots`,
+  `/burst-groups`, `/duplicate-groups`, `/triage-queue`, `POST /bulk/favorite`,
+  `POST /bulk/restore` all returned 422 because they were registered after
+  parameterized `/{photo_id}` routes. Fixed by moving `/{photo_id}` routes last.
+- `GET /trash` missing `selectinload(Photo.tags)` → `MissingGreenlet` crash for
+  trashed photos with tags (async lazy-load not supported in SQLAlchemy 2.x).
+- `POST /undo-cleanup/{batch}` returned 200 for unknown batch tokens; now 404.
 
 ### Known gaps / next
-- Real semantic search + AI tagging (embedding model).
-- DB migrations: new columns rely on `create_all` — fine for fresh DB, but an
-  existing SQLite file needs migrating (Alembic) before this ships with real data.
+- Real semantic search + AI tagging (embedding model — CLIP/ONNX).
 - `download-zip` (small selections) is still in-memory; keeper export is the
-  scalable path.
+  scalable path for large exports.

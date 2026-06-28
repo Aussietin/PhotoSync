@@ -117,6 +117,17 @@
         @toggle="picked.low_res = !picked.low_res"
         @clean="cleanOne({ low_res: true }, 'low_res')"
       />
+      <CategoryRow
+        label="Received / memes"
+        icon="📨"
+        :count="summary.memes.count"
+        :bytes="summary.memes.bytes"
+        :checked="picked.memes"
+        @toggle="picked.memes = !picked.memes"
+        @clean="cleanOne({ memes: true }, 'memes')"
+      >
+        <template #hint>Images with no camera data — WhatsApp forwards, memes, downloads (not screenshots).</template>
+      </CategoryRow>
 
       <!-- Undo banner -->
       <div v-if="lastBatch" class="card p-3 flex items-center gap-3 bg-brand-500/10 border border-brand-500/30">
@@ -197,7 +208,7 @@ const lastBatch = ref(null)
 const lastDeleted = ref(0)
 const picked = reactive({
   screenshots: true, duplicates: true, low_quality: false,
-  dark: false, overexposed: false, low_res: false,
+  dark: false, overexposed: false, low_res: false, memes: false,
 })
 const { job, track } = useJob()
 
@@ -254,6 +265,7 @@ async function cleanSelected() {
     dark: picked.dark,
     overexposed: picked.overexposed,
     low_res: picked.low_res,
+    memes: picked.memes,
     max_quality: picked.low_quality ? threshold.value : null,
   }
   const n = summary.value.total_reclaimable.count

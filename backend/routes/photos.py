@@ -318,6 +318,20 @@ async def bulk_restore(body: BulkIn, db: AsyncSession = Depends(get_db)):
 
 # ── Mass filter-based cleanup ───────────────────────────────────────────────────
 
+def _meme_condition():
+    """Photos with no camera EXIF that aren't screenshots — likely received/downloaded.
+
+    iPhone originals always have a camera_make ("Apple"). Images forwarded via
+    WhatsApp, Telegram, Instagram, etc. have their EXIF stripped, leaving
+    camera_make NULL. Excluding already-detected screenshots avoids double-counting.
+    """
+    return (
+        Photo.camera_make.is_(None)
+        & Photo.camera_model.is_(None)
+        & (Photo.is_screenshot == False)  # noqa: E712
+    )
+
+
 def _cleanup_conditions(body: "CleanupFilterIn"):
     """Build the list of OR conditions for a cleanup selection.
 
@@ -335,6 +349,8 @@ def _cleanup_conditions(body: "CleanupFilterIn"):
         conditions.append(Photo.is_overexposed == True)  # noqa: E712
     if body.low_res:
         conditions.append(Photo.is_low_res == True)  # noqa: E712
+    if body.memes:
+        conditions.append(_meme_condition())
     if body.max_quality is not None:
         conditions.append(
             (Photo.quality_score <= body.max_quality) & Photo.quality_score.is_not(None)
@@ -348,6 +364,7 @@ class CleanupFilterIn(BaseModel):
     dark: bool = False
     overexposed: bool = False
     low_res: bool = False
+    memes: bool = False  # received/forwarded images with no camera EXIF
     max_quality: float | None = None  # trash photos with quality <= this
 
 
@@ -367,12 +384,14 @@ async def cleanup_summary(
         return {"count": row[0], "bytes": int(row[1])}
 
     low_q = (Photo.quality_score <= max_quality) & Photo.quality_score.is_not(None)
+    meme_cond = _meme_condition()
     screenshots = await _count_and_size(Photo.is_screenshot == True)  # noqa: E712
     duplicates = await _count_and_size(Photo.is_duplicate == True)  # noqa: E712
     low_quality = await _count_and_size(low_q)
     dark = await _count_and_size(Photo.is_dark == True)  # noqa: E712
     overexposed = await _count_and_size(Photo.is_overexposed == True)  # noqa: E712
     low_res = await _count_and_size(Photo.is_low_res == True)  # noqa: E712
+    memes = await _count_and_size(meme_cond)
     # Union (a photo may match more than one category — count it once)
     reclaimable = await _count_and_size(
         or_(
@@ -381,6 +400,7 @@ async def cleanup_summary(
             Photo.is_dark == True,  # noqa: E712
             Photo.is_overexposed == True,  # noqa: E712
             Photo.is_low_res == True,  # noqa: E712
+            meme_cond,
             low_q,
         )
     )
@@ -392,6 +412,7 @@ async def cleanup_summary(
         "dark": dark,
         "overexposed": overexposed,
         "low_res": low_res,
+        "memes": memes,
         "low_quality_threshold": max_quality,
         "total_reclaimable": reclaimable,
     }
@@ -418,6 +439,7 @@ async def run_cleanup(body: CleanupFilterIn, db: AsyncSession = Depends(get_db))
         "dark" if body.dark else "",
         "overexposed" if body.overexposed else "",
         "low_res" if body.low_res else "",
+        "memes" if body.memes else "",
         "low_quality" if body.max_quality is not None else "",
     ) if k) or "manual"
 
