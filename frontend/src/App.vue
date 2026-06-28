@@ -6,12 +6,25 @@
         <router-link to="/" class="text-lg font-bold text-brand-500 tracking-tight">
           PhotoSync
         </router-link>
-        <nav class="hidden sm:flex items-center gap-1">
-          <NavLink to="/">Library</NavLink>
-          <NavLink to="/timeline">Timeline</NavLink>
-          <NavLink to="/search">Search</NavLink>
-          <NavLink to="/duplicates">Duplicates</NavLink>
-          <router-link to="/upload" class="btn-primary ml-2 text-sm">+ Upload</router-link>
+        <nav class="flex items-center gap-1">
+          <div class="hidden sm:flex items-center gap-1">
+            <NavLink to="/">Library</NavLink>
+            <NavLink to="/timeline">Timeline</NavLink>
+            <NavLink to="/search">Search</NavLink>
+            <NavLink to="/duplicates">Duplicates</NavLink>
+            <router-link to="/upload" class="btn-primary ml-2 text-sm">+ Upload</router-link>
+          </div>
+          <!-- QR connect button — always visible -->
+          <button
+            class="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors"
+            title="Connect phone via QR code"
+            @click="showConnect = true"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm10 0h2v2h-2v-2zm2-2h2v2h-2v-2zm0 4h2v2h-2v-2zm-4 0h2v2h-2v-2zm0-4h2v2h-2v-2z"/>
+            </svg>
+            <span class="hidden sm:inline">Connect Phone</span>
+          </button>
         </nav>
       </div>
     </header>
@@ -34,10 +47,17 @@
 
     <!-- Spacer for mobile bottom nav -->
     <div class="sm:hidden h-16" />
+
+    <!-- Connect phone modal -->
+    <ConnectModal v-if="showConnect" @close="showConnect = false" />
   </div>
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import NavLink from './components/NavLink.vue'
 import BottomTab from './components/BottomTab.vue'
+import ConnectModal from './components/ConnectModal.vue'
+
+const showConnect = ref(false)
 </script>

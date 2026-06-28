@@ -42,6 +42,22 @@ async def health():
     return {"status": "ok", "app": settings.APP_NAME}
 
 
+@app.get("/api/server-info")
+async def server_info():
+    import socket
+    local_ips: list[str] = []
+    try:
+        # Connect to an external address (no data sent) to find the outbound interface IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            local_ips.append(s.getsockname()[0])
+    except Exception:
+        pass
+    if not local_ips:
+        local_ips = ["localhost"]
+    return {"local_ips": local_ips, "frontend_port": 5173}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
