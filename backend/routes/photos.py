@@ -238,7 +238,12 @@ async def list_duplicates(db: AsyncSession = Depends(get_db)):
 
 @router.get("/trash")
 async def list_trash(db: AsyncSession = Depends(get_db)):
-    q = select(Photo).where(Photo.deleted_at.is_not(None)).order_by(Photo.deleted_at.desc())
+    q = (
+        select(Photo)
+        .where(Photo.deleted_at.is_not(None))
+        .options(selectinload(Photo.tags))
+        .order_by(Photo.deleted_at.desc())
+    )
     result = await db.execute(q)
     return {"photos": [_serialize(p) for p in result.scalars().all()]}
 
@@ -274,84 +279,6 @@ async def download_zip(body: DownloadZipIn, db: AsyncSession = Depends(get_db)):
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=photosync-export.zip"},
     )
-
-
-# ── Single photo ──────────────────────────────────────────────────────────────
-
-@router.get("/{photo_id}")
-async def get_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id, options=[selectinload(Photo.tags)])
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    return _serialize(photo)
-
-
-# ── Soft delete ───────────────────────────────────────────────────────────────
-
-@router.delete("/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.deleted_at = datetime.utcnow()
-    await db.commit()
-
-
-# ── Permanent delete ──────────────────────────────────────────────────────────
-
-@router.delete("/{photo_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
-async def permanent_delete(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    for path in (photo.file_path, photo.thumbnail_path):
-        if path:
-            try:
-                os.remove(path)
-            except FileNotFoundError:
-                pass
-    await db.delete(photo)
-    await db.commit()
-
-
-# ── Restore from trash ────────────────────────────────────────────────────────
-
-@router.post("/{photo_id}/restore")
-async def restore_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.deleted_at = None
-    await db.commit()
-    return {"id": photo.id, "restored": True}
-
-
-# ── Favorite toggle ───────────────────────────────────────────────────────────
-
-@router.post("/{photo_id}/favorite")
-async def toggle_favorite(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.is_favorite = not photo.is_favorite
-    await db.commit()
-    return {"id": photo.id, "is_favorite": photo.is_favorite}
-
-
-# ── Notes / caption ───────────────────────────────────────────────────────────
-
-class NotesIn(BaseModel):
-    notes: str
-
-
-@router.patch("/{photo_id}/notes")
-async def update_notes(photo_id: int, body: NotesIn, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.notes = body.notes
-    await db.commit()
-    return {"id": photo.id, "notes": photo.notes}
 
 
 # ── Bulk operations ───────────────────────────────────────────────────────────
@@ -559,6 +486,11 @@ async def cleanup_history(db: AsyncSession = Depends(get_db)):
 @router.post("/undo-cleanup/{batch}")
 async def undo_cleanup(batch: str, db: AsyncSession = Depends(get_db)):
     """Restore every photo trashed in a given cleanup batch."""
+    log = (await db.execute(
+        select(DeletionLog).where(DeletionLog.batch == batch)
+    )).scalar_one_or_none()
+    if log is None:
+        raise HTTPException(status_code=404, detail="Batch not found")
     result = await db.execute(
         update(Photo)
         .where(Photo.deleted_batch == batch, Photo.deleted_at.is_not(None))
@@ -813,6 +745,74 @@ async def triage_queue(
                 queue.append({**_serialize(p), "triage_reason": "low_quality"})
 
     return {"queue": queue, "total": len(queue)}
+
+
+# ── Single photo (kept last so specific-path routes take priority) ────────────
+
+@router.get("/{photo_id}")
+async def get_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id, options=[selectinload(Photo.tags)])
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return _serialize(photo)
+
+
+@router.delete("/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.deleted_at = datetime.utcnow()
+    await db.commit()
+
+
+@router.delete("/{photo_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+async def permanent_delete(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    for path in (photo.file_path, photo.thumbnail_path):
+        if path:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+    await db.delete(photo)
+    await db.commit()
+
+
+@router.post("/{photo_id}/restore")
+async def restore_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.deleted_at = None
+    await db.commit()
+    return {"id": photo.id, "restored": True}
+
+
+@router.post("/{photo_id}/favorite")
+async def toggle_favorite(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.is_favorite = not photo.is_favorite
+    await db.commit()
+    return {"id": photo.id, "is_favorite": photo.is_favorite}
+
+
+class NotesIn(BaseModel):
+    notes: str
+
+
+@router.patch("/{photo_id}/notes")
+async def update_notes(photo_id: int, body: NotesIn, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.notes = body.notes
+    await db.commit()
+    return {"id": photo.id, "notes": photo.notes}
 
 
 # ── Serialiser ────────────────────────────────────────────────────────────────
