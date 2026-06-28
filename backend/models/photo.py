@@ -1,8 +1,17 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, ForeignKey, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
+
+
+# Album <-> Photo many-to-many junction
+photo_albums = Table(
+    "photo_albums",
+    Base.metadata,
+    Column("photo_id", Integer, ForeignKey("photos.id", ondelete="CASCADE"), primary_key=True),
+    Column("album_id", Integer, ForeignKey("albums.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class Photo(Base):
@@ -33,14 +42,25 @@ class Photo(Base):
     duplicate_of_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("photos.id"), nullable=True)
 
     # AI
-    ai_tags: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array stored as text
+    ai_tags: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
     ai_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Quality score (0–1): higher = sharper + better exposed
+    quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # User features
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Soft delete
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
     # Housekeeping
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     tags: Mapped[list["Tag"]] = relationship("Tag", back_populates="photo", cascade="all, delete-orphan")
+    albums: Mapped[list["Album"]] = relationship("Album", secondary=photo_albums, back_populates="photos")
 
 
 class Tag(Base):
@@ -53,3 +73,16 @@ class Tag(Base):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     photo: Mapped["Photo"] = relationship("Photo", back_populates="tags")
+
+
+class Album(Base):
+    __tablename__ = "albums"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cover_photo_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("photos.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    photos: Mapped[list["Photo"]] = relationship("Photo", secondary=photo_albums, back_populates="albums")

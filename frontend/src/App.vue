@@ -1,31 +1,39 @@
 <template>
   <div class="flex flex-col min-h-screen">
     <!-- Top nav -->
-    <header class="sticky top-0 z-50 bg-gray-950/90 backdrop-blur border-b border-gray-800 safe-top">
-      <div class="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between">
-        <router-link to="/" class="text-lg font-bold text-brand-500 tracking-tight">
+    <header class="sticky top-0 z-50 bg-gray-950/90 backdrop-blur border-b border-gray-800">
+      <div class="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
+        <router-link to="/" class="text-lg font-bold text-brand-500 tracking-tight flex-shrink-0">
           PhotoSync
         </router-link>
-        <nav class="flex items-center gap-1">
-          <div class="hidden sm:flex items-center gap-1">
-            <NavLink to="/">Library</NavLink>
-            <NavLink to="/timeline">Timeline</NavLink>
-            <NavLink to="/search">Search</NavLink>
-            <NavLink to="/duplicates">Duplicates</NavLink>
-            <router-link to="/upload" class="btn-primary ml-2 text-sm">+ Upload</router-link>
-          </div>
-          <!-- QR connect button — always visible -->
+
+        <!-- Desktop nav -->
+        <nav class="hidden sm:flex items-center gap-0.5 flex-1 overflow-x-auto">
+          <NavLink to="/">Library</NavLink>
+          <NavLink to="/timeline">Timeline</NavLink>
+          <NavLink to="/albums">Albums</NavLink>
+          <NavLink to="/search">Search</NavLink>
+          <NavLink to="/map">Map</NavLink>
+          <NavLink to="/stats">Stats</NavLink>
+          <NavLink to="/duplicates">Dupes</NavLink>
+          <NavLink to="/trash">Trash</NavLink>
+          <NavLink to="/import">Import</NavLink>
+        </nav>
+
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <router-link to="/upload" class="btn-primary text-sm hidden sm:flex">+ Upload</router-link>
+          <!-- QR connect -->
           <button
-            class="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors"
-            title="Connect phone via QR code"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors"
+            title="Connect phone"
             @click="showConnect = true"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
               <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm10 0h2v2h-2v-2zm2-2h2v2h-2v-2zm0 4h2v2h-2v-2zm-4 0h2v2h-2v-2zm0-4h2v2h-2v-2z"/>
             </svg>
-            <span class="hidden sm:inline">Connect Phone</span>
+            <span class="hidden sm:inline">Connect</span>
           </button>
-        </nav>
+        </div>
       </div>
     </header>
 
@@ -34,21 +42,19 @@
       <router-view />
     </main>
 
-    <!-- Bottom nav (mobile) -->
-    <nav class="sm:hidden fixed bottom-0 inset-x-0 bg-gray-950/95 backdrop-blur border-t border-gray-800 safe-bottom">
+    <!-- Mobile bottom nav -->
+    <nav class="sm:hidden fixed bottom-0 inset-x-0 bg-gray-950/95 backdrop-blur border-t border-gray-800">
       <div class="grid grid-cols-5 h-16">
         <BottomTab to="/" icon="🖼️" label="Library" />
+        <BottomTab to="/albums" icon="🗂️" label="Albums" />
+        <BottomTab to="/upload" icon="⬆️" label="Upload" :primary="true" />
         <BottomTab to="/timeline" icon="📅" label="Timeline" />
-        <BottomTab to="/upload" icon="⬆️" label="Upload" primary />
         <BottomTab to="/search" icon="🔍" label="Search" />
-        <BottomTab to="/duplicates" icon="🔁" label="Dupes" />
       </div>
     </nav>
 
-    <!-- Spacer for mobile bottom nav -->
     <div class="sm:hidden h-16" />
 
-    <!-- Connect phone modal -->
     <ConnectModal v-if="showConnect" @close="showConnect = false" />
   </div>
 </template>

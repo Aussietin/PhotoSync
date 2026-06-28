@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from database import init_db
-from routes import photos, tags, search
+from routes import photos, tags, search, albums, stats
 
 
 @asynccontextmanager
@@ -31,8 +31,9 @@ app.add_middleware(
 app.include_router(photos.router, prefix="/api/photos", tags=["photos"])
 app.include_router(tags.router, prefix="/api/tags", tags=["tags"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
+app.include_router(albums.router, prefix="/api/albums", tags=["albums"])
+app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 
-# Serve uploaded originals and thumbnails
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 app.mount("/thumbnails", StaticFiles(directory=settings.THUMBNAIL_DIR), name="thumbnails")
 
@@ -47,7 +48,6 @@ async def server_info():
     import socket
     local_ips: list[str] = []
     try:
-        # Connect to an external address (no data sent) to find the outbound interface IP
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             local_ips.append(s.getsockname()[0])
