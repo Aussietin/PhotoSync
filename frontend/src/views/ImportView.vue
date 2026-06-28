@@ -6,6 +6,38 @@
       Useful for migrating an existing photo library.
     </p>
 
+    <!-- Getting photos off the phone -->
+    <div class="card p-5 space-y-3">
+      <h2 class="font-semibold text-sm">How to get photos from your iPhone to this machine</h2>
+      <div class="space-y-3 text-sm text-gray-400">
+        <div>
+          <p class="font-medium text-gray-300">Option A — Finder / Image Capture (USB, fastest)</p>
+          <ol class="mt-1.5 ml-4 space-y-1 list-decimal marker:text-gray-600">
+            <li>Plug iPhone into Mac with a Lightning or USB-C cable.</li>
+            <li>Open <span class="font-medium text-gray-300">Image Capture</span> (in Applications) or click the phone in Finder's sidebar.</li>
+            <li>Select all photos (<kbd class="text-xs bg-gray-800 px-1.5 py-0.5 rounded">⌘A</kbd>) and click <span class="font-medium text-gray-300">Import All</span> → choose a destination folder.</li>
+            <li>Enter that folder path below and click <span class="font-medium text-gray-300">Start import</span>.</li>
+          </ol>
+        </div>
+        <div>
+          <p class="font-medium text-gray-300">Option B — iCloud Photos (wireless)</p>
+          <ol class="mt-1.5 ml-4 space-y-1 list-decimal marker:text-gray-600">
+            <li>On the Mac, open <span class="font-medium text-gray-300">Photos</span> app → Preferences → iCloud → enable "Download Originals to this Mac".</li>
+            <li>Wait for the full-resolution download to finish (can take hours for large libraries).</li>
+            <li>The originals land in <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">~/Pictures/Photos Library.photoslibrary/originals</span> — use that path below, with <span class="font-medium text-gray-300">Scan subfolders</span> checked.</li>
+          </ol>
+        </div>
+        <div>
+          <p class="font-medium text-gray-300">Option C — AirDrop to Mac</p>
+          <ol class="mt-1.5 ml-4 space-y-1 list-decimal marker:text-gray-600">
+            <li>On iPhone: Photos → select all → tap Share → AirDrop → your Mac.</li>
+            <li>Files land in <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">~/Downloads</span> — use that as the folder path below.</li>
+            <li>Best for batches of hundreds; tedious for 20k+.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
     <div class="card p-5 space-y-4">
       <div>
         <label class="block text-xs text-gray-500 mb-1.5">Server folder path</label>

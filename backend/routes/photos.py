@@ -855,6 +855,7 @@ def _serialize(p: Photo) -> dict:
         "ai_tags": json.loads(p.ai_tags) if p.ai_tags else [],
         "is_duplicate": p.is_duplicate,
         "is_screenshot": p.is_screenshot,
+        "is_meme": not p.camera_make and not p.camera_model and not p.is_screenshot,
         "is_dark": p.is_dark,
         "is_overexposed": p.is_overexposed,
         "is_low_res": p.is_low_res,
