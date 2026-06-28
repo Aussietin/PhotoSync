@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -350,36 +350,182 @@ class BulkIn(BaseModel):
 
 @router.post("/bulk/delete")
 async def bulk_delete(body: BulkIn, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Photo).where(Photo.id.in_(body.photo_ids)))
-    now = datetime.utcnow()
-    count = 0
-    for photo in result.scalars().all():
-        photo.deleted_at = now
-        count += 1
+    result = await db.execute(
+        update(Photo)
+        .where(Photo.id.in_(body.photo_ids), Photo.deleted_at.is_(None))
+        .values(deleted_at=datetime.utcnow())
+    )
     await db.commit()
-    return {"deleted": count}
+    return {"deleted": result.rowcount}
 
 
 @router.post("/bulk/favorite")
 async def bulk_favorite(body: BulkIn, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Photo).where(Photo.id.in_(body.photo_ids)))
-    count = 0
-    for photo in result.scalars().all():
-        photo.is_favorite = True
-        count += 1
+    result = await db.execute(
+        update(Photo).where(Photo.id.in_(body.photo_ids)).values(is_favorite=True)
+    )
     await db.commit()
-    return {"favorited": count}
+    return {"favorited": result.rowcount}
 
 
 @router.post("/bulk/restore")
 async def bulk_restore(body: BulkIn, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Photo).where(Photo.id.in_(body.photo_ids)))
-    count = 0
-    for photo in result.scalars().all():
-        photo.deleted_at = None
-        count += 1
+    result = await db.execute(
+        update(Photo).where(Photo.id.in_(body.photo_ids)).values(deleted_at=None)
+    )
     await db.commit()
-    return {"restored": count}
+    return {"restored": result.rowcount}
+
+
+# ── Mass filter-based cleanup ───────────────────────────────────────────────────
+
+def _cleanup_conditions(
+    screenshots: bool,
+    duplicates: bool,
+    max_quality: float | None,
+):
+    """Build the list of OR conditions for a cleanup selection.
+
+    Always scoped to live (non-deleted), non-favorite photos by the caller.
+    Returns an empty list if no category was selected (caller should no-op).
+    """
+    conditions = []
+    if screenshots:
+        conditions.append(Photo.is_screenshot == True)  # noqa: E712
+    if duplicates:
+        conditions.append(Photo.is_duplicate == True)  # noqa: E712
+    if max_quality is not None:
+        conditions.append(
+            (Photo.quality_score <= max_quality) & Photo.quality_score.is_not(None)
+        )
+    return conditions
+
+
+class CleanupFilterIn(BaseModel):
+    screenshots: bool = False
+    duplicates: bool = False
+    max_quality: float | None = None  # trash photos with quality <= this
+
+
+@router.get("/cleanup-summary")
+async def cleanup_summary(
+    max_quality: float = Query(0.3, ge=0.0, le=1.0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Counts + reclaimable space for each cleanup category. Excludes favorites."""
+    live = (Photo.deleted_at.is_(None)) & (Photo.is_favorite == False)  # noqa: E712
+
+    async def _count_and_size(extra):
+        row = (await db.execute(
+            select(func.count(), func.coalesce(func.sum(Photo.file_size), 0))
+            .where(live & extra)
+        )).first()
+        return {"count": row[0], "bytes": int(row[1])}
+
+    screenshots = await _count_and_size(Photo.is_screenshot == True)  # noqa: E712
+    duplicates = await _count_and_size(Photo.is_duplicate == True)  # noqa: E712
+    low_quality = await _count_and_size(
+        (Photo.quality_score <= max_quality) & Photo.quality_score.is_not(None)
+    )
+    # Union (a photo may match more than one category — count it once)
+    reclaimable = await _count_and_size(
+        or_(
+            Photo.is_screenshot == True,  # noqa: E712
+            Photo.is_duplicate == True,  # noqa: E712
+            (Photo.quality_score <= max_quality) & Photo.quality_score.is_not(None),
+        )
+    )
+
+    return {
+        "screenshots": screenshots,
+        "duplicates": duplicates,
+        "low_quality": low_quality,
+        "low_quality_threshold": max_quality,
+        "total_reclaimable": reclaimable,
+    }
+
+
+@router.post("/cleanup")
+async def run_cleanup(body: CleanupFilterIn, db: AsyncSession = Depends(get_db)):
+    """Send EVERY photo matching the selected categories to trash in one query.
+
+    This is the mass-cleanup workhorse: it acts on the whole library server-side,
+    not just whatever the client has loaded. Favorites are always protected.
+    """
+    conditions = _cleanup_conditions(body.screenshots, body.duplicates, body.max_quality)
+    if not conditions:
+        raise HTTPException(status_code=400, detail="No cleanup category selected")
+
+    result = await db.execute(
+        update(Photo)
+        .where(
+            Photo.deleted_at.is_(None),
+            Photo.is_favorite == False,  # noqa: E712
+            or_(*conditions),
+        )
+        .values(deleted_at=datetime.utcnow())
+    )
+    await db.commit()
+    return {"deleted": result.rowcount}
+
+
+# ── Library analysis (rescan flags for existing photos) ─────────────────────────
+
+@router.post("/analyze")
+async def analyze_library(
+    recompute_quality: bool = Query(True),
+    db: AsyncSession = Depends(get_db),
+):
+    """One-shot analysis of the whole library: screenshot flags, quality scores,
+    and near-duplicate clustering. Run this once after a bulk import."""
+    from services.screenshot_detector import detect_screenshot
+    from services.image_processor import recompute_quality as recompute_quality_fn
+    from services.deduplicator import rescan_duplicates
+    from pathlib import Path
+
+    result = await db.execute(select(Photo).where(Photo.deleted_at.is_(None)))
+    photos = result.scalars().all()
+
+    screenshots_flagged = 0
+    quality_updated = 0
+    for photo in photos:
+        detected = detect_screenshot(
+            width=photo.width,
+            height=photo.height,
+            camera_make=photo.camera_make,
+            original_filename=photo.original_filename,
+        )
+        if detected != photo.is_screenshot:
+            photo.is_screenshot = detected
+        if detected:
+            screenshots_flagged += 1
+
+        if recompute_quality:
+            # Score off the thumbnail when present — fast for large libraries.
+            src = photo.thumbnail_path or photo.file_path
+            if src and Path(src).exists():
+                score = recompute_quality_fn(src)
+                if score is not None:
+                    photo.quality_score = score
+                    quality_updated += 1
+
+    await db.commit()
+
+    dup_summary = await rescan_duplicates(db)
+
+    return {
+        "scanned": len(photos),
+        "screenshots": screenshots_flagged,
+        "quality_recomputed": quality_updated,
+        "duplicates": dup_summary,
+    }
+
+
+@router.post("/rescan-duplicates")
+async def rescan_duplicates_endpoint(db: AsyncSession = Depends(get_db)):
+    """Re-cluster near-duplicates across the whole library (BK-tree)."""
+    from services.deduplicator import rescan_duplicates
+    return await rescan_duplicates(db)
 
 
 # ── Screenshots ───────────────────────────────────────────────────────────────

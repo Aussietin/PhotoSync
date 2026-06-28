@@ -157,11 +157,14 @@ async function softDelete(id) {
 }
 
 async function deleteAll() {
-  if (!confirm(`Send all ${total.value} screenshots to trash?`)) return
-  await photosApi.bulkDelete(photos.value.map((p) => p.id))
+  if (!confirm(`Send all ${total.value} screenshots to trash? (favorites are kept)`)) return
+  // Server-side: trashes EVERY screenshot, not just the ones scrolled into view.
+  const { data } = await photosApi.runCleanup({ screenshots: true })
   photos.value = []
   total.value = 0
   sel.clear()
+  scanResult.value = { scanned: data.deleted, total_screenshots: 0, updated: data.deleted }
+  await load(true)
 }
 
 async function bulkDelete() {

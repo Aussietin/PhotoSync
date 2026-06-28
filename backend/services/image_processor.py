@@ -33,33 +33,55 @@ async def process_photo(file_path: Path, original_filename: str | None = None) -
 
 
 def _quality_score(img, np) -> float:
-    """Return a 0–1 quality score combining sharpness and exposure."""
-    try:
-        gray = img.convert("L")
-        arr = np.array(gray, dtype=float)
+    """Return a 0–1 quality score combining sharpness (blur) and exposure.
 
-        # Laplacian variance → sharpness (clamp at 800 for normalisation)
-        laplacian = np.array([
-            [0, 1, 0],
-            [1, -4, 1],
-            [0, 1, 0],
-        ])
-        from scipy.ndimage import convolve
-        lap = convolve(arr, laplacian)
-        sharpness = min(float(np.var(lap)), 800.0) / 800.0
+    Sharpness uses variance-of-Laplacian computed in pure numpy (no scipy).
+    Both signals are measured on a fixed-size downscale so scores are
+    comparable across photos of different resolutions and the calc stays fast.
+    """
+    QUALITY_EDGE = 512          # long-edge px the score is computed at
+    SHARPNESS_CLAMP = 1000.0    # Laplacian variance considered "tack sharp"
+
+    try:
+        work = img.convert("L")
+        work.thumbnail((QUALITY_EDGE, QUALITY_EDGE))
+        arr = np.asarray(work, dtype="float64")
+
+        # 4-neighbour Laplacian on the interior, vectorised (== scipy convolve
+        # with [[0,1,0],[1,-4,1],[0,1,0]] minus the border).
+        lap = (
+            -4.0 * arr[1:-1, 1:-1]
+            + arr[:-2, 1:-1] + arr[2:, 1:-1]
+            + arr[1:-1, :-2] + arr[1:-1, 2:]
+        )
+        sharpness = min(float(lap.var()), SHARPNESS_CLAMP) / SHARPNESS_CLAMP
     except Exception:
-        # scipy not available — skip sharpness, use brightness only
         sharpness = 0.5
 
     try:
-        rgb = img.convert("RGB")
-        brightness = float(np.array(rgb).mean()) / 255.0
-        # Penalise very dark (<0.1) or very bright (>0.9) images
+        brightness = float(arr.mean()) / 255.0
+        # Penalise very dark (<0.1) or blown-out (>0.9) images
         exposure = 1.0 - abs(brightness - 0.5) * 2
     except Exception:
         exposure = 0.5
 
     return round(sharpness * 0.6 + exposure * 0.4, 3)
+
+
+def recompute_quality(image_path) -> float | None:
+    """Recompute quality score for an existing file (used by batch rescan).
+
+    Reads the given path — pass a thumbnail for speed when rescanning a large
+    library; the downscale inside _quality_score keeps results comparable.
+    """
+    try:
+        from PIL import Image
+        import numpy as np
+
+        with Image.open(image_path) as img:
+            return _quality_score(img, np)
+    except Exception:
+        return None
 
 
 def _extract_exif(file_path: Path) -> dict[str, Any]:

@@ -10,14 +10,15 @@
         <!-- Desktop nav -->
         <nav class="hidden sm:flex items-center gap-0.5 flex-1 overflow-x-auto">
           <NavLink to="/">Library</NavLink>
+          <NavLink to="/cleanup">✨ Cleanup</NavLink>
+          <NavLink to="/triage">Triage</NavLink>
+          <NavLink to="/screenshots">Screenshots</NavLink>
+          <NavLink to="/duplicates">Dupes</NavLink>
           <NavLink to="/timeline">Timeline</NavLink>
           <NavLink to="/albums">Albums</NavLink>
           <NavLink to="/search">Search</NavLink>
           <NavLink to="/map">Map</NavLink>
           <NavLink to="/stats">Stats</NavLink>
-          <NavLink to="/screenshots">Screenshots</NavLink>
-          <NavLink to="/duplicates">Dupes</NavLink>
-          <NavLink to="/triage">Triage</NavLink>
           <NavLink to="/trash">Trash</NavLink>
           <NavLink to="/import">Import</NavLink>
         </nav>
@@ -48,9 +49,9 @@
     <nav class="sm:hidden fixed bottom-0 inset-x-0 bg-gray-950/95 backdrop-blur border-t border-gray-800">
       <div class="grid grid-cols-5 h-16">
         <BottomTab to="/" icon="🖼️" label="Library" />
-        <BottomTab to="/albums" icon="🗂️" label="Albums" />
-        <BottomTab to="/upload" icon="⬆️" label="Upload" :primary="true" />
-        <BottomTab to="/timeline" icon="📅" label="Timeline" />
+        <BottomTab to="/triage" icon="🃏" label="Triage" />
+        <BottomTab to="/cleanup" icon="✨" label="Cleanup" :primary="true" />
+        <BottomTab to="/screenshots" icon="📱" label="Screens" />
         <BottomTab to="/search" icon="🔍" label="Search" />
       </div>
     </nav>

@@ -8,11 +8,16 @@
         </h1>
         <p class="text-xs text-gray-500 mt-0.5">Auto-selected duplicates are pre-checked — review and delete</p>
       </div>
-      <button
-        v-if="groups.length"
-        class="btn-ghost text-sm text-red-400 hover:text-red-300"
-        @click="deleteAllSuggested"
-      >Delete all suggested</button>
+      <div class="flex gap-2">
+        <button class="btn-ghost text-sm" :disabled="scanning" @click="rescan">
+          {{ scanning ? 'Scanning…' : '🔍 Re-scan' }}
+        </button>
+        <button
+          v-if="groups.length"
+          class="btn-ghost text-sm text-red-400 hover:text-red-300"
+          @click="deleteAllSuggested"
+        >Delete all suggested</button>
+      </div>
     </div>
 
     <div v-if="loading" class="flex justify-center py-20">
@@ -97,6 +102,7 @@ import { photosApi } from '../api/photos'
 
 const groups = ref([])
 const loading = ref(false)
+const scanning = ref(false)
 // Map of group original id → Set of checked (to-delete) photo ids
 const checked = reactive({})
 
@@ -164,6 +170,16 @@ async function reload() {
     }
   } finally {
     loading.value = false
+  }
+}
+
+async function rescan() {
+  scanning.value = true
+  try {
+    await photosApi.rescanDuplicates()
+    await reload()
+  } finally {
+    scanning.value = false
   }
 }
 

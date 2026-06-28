@@ -36,9 +36,17 @@ export const photosApi = {
 
   // Duplicate groups
   duplicateGroups: () => api.get('/photos/duplicate-groups'),
+  rescanDuplicates: () => api.post('/photos/rescan-duplicates'),
 
   // Triage
   triageQueue: (params) => api.get('/photos/triage-queue', { params }),
+
+  // Mass cleanup
+  cleanupSummary: (max_quality = 0.3) =>
+    api.get('/photos/cleanup-summary', { params: { max_quality } }),
+  runCleanup: (filters) => api.post('/photos/cleanup', filters),
+  analyzeLibrary: (recompute_quality = true) =>
+    api.post('/photos/analyze', null, { params: { recompute_quality } }),
 }
 
 export const tagsApi = {
