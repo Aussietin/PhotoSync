@@ -96,7 +96,7 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - [x] Background jobs + progress (Job model, `services/jobs.py`, `/api/jobs`);
       import/analyze/rescan run off the request thread with progress polling.
 - [x] Web-friendly JPEG previews so HEIC originals display in-browser.
-- [ ] Document the Finder/Image Capture "dump to folder" workflow (in ExportView UI).
+- [x] Document the Finder/Image Capture "dump to folder" workflow (in ImportView: Finder/Image Capture, iCloud, AirDrop options).
 - [ ] Resumable/parallel browser upload (folder import is the practical path for now).
 
 ### Stage 2 — Close the loop with the iPhone ✅
@@ -110,6 +110,7 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - [x] More cull categories: dark, overexposed, low-res (wired into cleanup).
 - [x] **Memes/received images**: no-EXIF + not-screenshot filter catches WhatsApp
       forwards, meme downloads, etc. Pure SQL condition, no new DB column.
+      `is_meme` derived field in `_serialize()`, orange "RCV" badge in PhotoCard.
 - [ ] Documents/receipts category (future).
 - [ ] **Real AI tagging + semantic search** (still the color-heuristic placeholder;
       needs an embedding model — deferred, can't validate a model in this env).
