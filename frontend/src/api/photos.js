@@ -34,9 +34,12 @@ export const photosApi = {
   listScreenshots: (params) => api.get('/photos/screenshots', { params }),
   scanScreenshots: () => api.post('/photos/scan-screenshots'),
 
-  // Duplicate groups
+  // Duplicate groups (returns { job_id } — poll via jobsApi)
   duplicateGroups: () => api.get('/photos/duplicate-groups'),
   rescanDuplicates: () => api.post('/photos/rescan-duplicates'),
+
+  // Burst groups
+  burstGroups: () => api.get('/photos/burst-groups'),
 
   // Triage
   triageQueue: (params) => api.get('/photos/triage-queue', { params }),
@@ -45,8 +48,30 @@ export const photosApi = {
   cleanupSummary: (max_quality = 0.3) =>
     api.get('/photos/cleanup-summary', { params: { max_quality } }),
   runCleanup: (filters) => api.post('/photos/cleanup', filters),
+  cleanupHistory: () => api.get('/photos/cleanup-history'),
+  undoCleanup: (batch) => api.post(`/photos/undo-cleanup/${batch}`),
+  emptyTrash: (older_than_days = null) =>
+    api.post('/photos/empty-trash', null, {
+      params: older_than_days == null ? {} : { older_than_days },
+    }),
+
+  // Background jobs (import / analyze / rescan return { job_id })
   analyzeLibrary: (recompute_quality = true) =>
     api.post('/photos/analyze', null, { params: { recompute_quality } }),
+}
+
+export const jobsApi = {
+  list: () => api.get('/jobs'),
+  get: (id) => api.get(`/jobs/${id}`),
+}
+
+export const exportApi = {
+  // Returns the URL for a direct browser download (streamed from server)
+  keepersUrl: (opts = {}) => {
+    const p = new URLSearchParams(opts).toString()
+    return `/api/export/keepers${p ? `?${p}` : ''}`
+  },
+  deletionPlanUrl: (fmt = 'csv') => `/api/export/deletion-plan?fmt=${fmt}`,
 }
 
 export const tagsApi = {

@@ -27,9 +27,10 @@ build/
 *.sqlite
 *.sqlite3
 
-# Uploads / thumbnails (user data — never commit)
+# Uploads / thumbnails / previews (user data — never commit)
 backend/uploads/
 backend/thumbnails/
+backend/previews/
 backend/data/
 
 # Node

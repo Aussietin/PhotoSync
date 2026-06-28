@@ -12,6 +12,8 @@ import DuplicateGroupsView from './views/DuplicateGroupsView.vue'
 import ScreenshotsView from './views/ScreenshotsView.vue'
 import TriageView from './views/TriageView.vue'
 import CleanupView from './views/CleanupView.vue'
+import BurstsView from './views/BurstsView.vue'
+import ExportView from './views/ExportView.vue'
 import AlbumsView from './views/AlbumsView.vue'
 import AlbumDetailView from './views/AlbumDetailView.vue'
 import StatsView from './views/StatsView.vue'
@@ -31,6 +33,8 @@ const router = createRouter({
     { path: '/screenshots', component: ScreenshotsView },
     { path: '/triage', component: TriageView },
     { path: '/cleanup', component: CleanupView },
+    { path: '/bursts', component: BurstsView },
+    { path: '/export', component: ExportView },
     { path: '/albums', component: AlbumsView },
     { path: '/albums/:id', component: AlbumDetailView },
     { path: '/stats', component: StatsView },

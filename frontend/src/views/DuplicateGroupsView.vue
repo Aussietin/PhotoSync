@@ -99,6 +99,9 @@
 <script setup>
 import { ref, computed, reactive, onMounted } from 'vue'
 import { photosApi } from '../api/photos'
+import { useJob } from '../composables/useJob'
+
+const { track } = useJob()
 
 const groups = ref([])
 const loading = ref(false)
@@ -176,9 +179,13 @@ async function reload() {
 async function rescan() {
   scanning.value = true
   try {
-    await photosApi.rescanDuplicates()
-    await reload()
-  } finally {
+    const { data } = await photosApi.rescanDuplicates()
+    // Now a background job — wait for it before reloading the groups.
+    await track(data.job_id, {
+      onDone: async () => { await reload(); scanning.value = false },
+      onError: () => { scanning.value = false },
+    })
+  } catch (e) {
     scanning.value = false
   }
 }

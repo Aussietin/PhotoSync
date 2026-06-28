@@ -1,20 +1,23 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from database import init_db
-from routes import photos, tags, search, albums, stats
+from routes import photos, tags, search, albums, stats, jobs, export
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    os.makedirs(settings.THUMBNAIL_DIR, exist_ok=True)
+    for d in (settings.UPLOAD_DIR, settings.THUMBNAIL_DIR, settings.PREVIEW_DIR):
+        os.makedirs(d, exist_ok=True)
+    from services.jobs import reap_stale_jobs
+    await reap_stale_jobs()  # clear jobs left 'running' by a previous crash
     yield
 
 
@@ -28,14 +31,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def api_token_guard(request: Request, call_next):
+    """If API_TOKEN is configured, require it on /api routes (health excepted)."""
+    if settings.API_TOKEN and request.url.path.startswith("/api"):
+        if request.url.path != "/api/health":
+            if request.headers.get("X-API-Token") != settings.API_TOKEN:
+                return JSONResponse({"detail": "Invalid or missing API token"}, status_code=401)
+    return await call_next(request)
+
+
 app.include_router(photos.router, prefix="/api/photos", tags=["photos"])
 app.include_router(tags.router, prefix="/api/tags", tags=["tags"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(albums.router, prefix="/api/albums", tags=["albums"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
+app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
+app.include_router(export.router, prefix="/api/export", tags=["export"])
 
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 app.mount("/thumbnails", StaticFiles(directory=settings.THUMBNAIL_DIR), name="thumbnails")
+app.mount("/previews", StaticFiles(directory=settings.PREVIEW_DIR), name="previews")
 
 
 @app.get("/api/health")

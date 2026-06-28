@@ -31,7 +31,34 @@ async def process_photo(file_path: Path, original_filename: str | None = None) -
         original_filename=original_filename or file_path.name,
     )
 
+    meta.update(_classify(file_path, meta.get("width"), meta.get("height")))
     return meta
+
+
+def _classify(image_path, width, height) -> dict:
+    """Cheap exposure/resolution flags used for smart culling."""
+    from config import settings
+
+    flags = {"is_dark": False, "is_overexposed": False, "is_low_res": False}
+
+    if width and height:
+        megapixels = (width * height) / 1_000_000
+        flags["is_low_res"] = megapixels < settings.LOW_RES_MEGAPIXELS
+
+    try:
+        from PIL import Image
+        import numpy as np
+
+        with Image.open(image_path) as img:
+            small = img.convert("L")
+            small.thumbnail((128, 128))
+            brightness = float(np.asarray(small).mean()) / 255.0
+        flags["is_dark"] = brightness < settings.DARK_THRESHOLD
+        flags["is_overexposed"] = brightness > settings.OVEREXPOSED_THRESHOLD
+    except Exception:
+        pass
+
+    return flags
 
 
 def _quality_score(img, np) -> float:

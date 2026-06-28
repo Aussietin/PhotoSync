@@ -22,6 +22,7 @@ class Photo(Base):
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    preview_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(64), nullable=False)
 
@@ -50,13 +51,20 @@ class Photo(Base):
 
     # Classification
     is_screenshot: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_dark: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_overexposed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_low_res: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    # Burst grouping (photos taken seconds apart + visually similar share an id)
+    burst_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     # User features
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Soft delete
+    # Soft delete (deleted_batch links a cleanup run for one-click undo)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    deleted_batch: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
     # Housekeeping
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -89,3 +97,31 @@ class Album(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     photos: Mapped[list["Photo"]] = relationship("Photo", secondary=photo_albums, back_populates="albums")
+
+
+class Job(Base):
+    """A long-running background task (import / analyze / rescan) with progress."""
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    kind: Mapped[str] = mapped_column(String(48), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending|running|done|error
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    processed: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class DeletionLog(Base):
+    """Audit record for each cleanup/delete batch, enabling one-click undo."""
+    __tablename__ = "deletion_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    batch: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String(128), default="manual")
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    undone: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

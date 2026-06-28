@@ -21,7 +21,7 @@
         <!-- Image -->
         <div class="relative bg-black flex items-center justify-center" style="max-height:60vh">
           <img
-            :src="photo.original_url"
+            :src="photo.preview_url || photo.original_url"
             :alt="photo.filename"
             class="max-w-full max-h-[60vh] object-contain"
           />

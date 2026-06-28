@@ -27,9 +27,15 @@
         {{ analyzeResult.duplicates?.duplicates ?? 0 }} duplicates,
         {{ analyzeResult.quality_recomputed }} quality scores updated.
       </div>
-      <p v-if="analyzing" class="text-xs text-gray-500 animate-pulse">
-        Reading thumbnails and clustering hashes — this can take a few minutes for large libraries.
-      </p>
+      <div v-if="analyzing" class="space-y-1">
+        <div class="flex justify-between text-xs text-gray-500">
+          <span>Reading thumbnails &amp; clustering — can take a few minutes for large libraries.</span>
+          <span v-if="job && job.percent != null">{{ job.percent }}%</span>
+        </div>
+        <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+          <div class="h-full bg-brand-500 transition-all duration-300" :style="{ width: `${(job && job.percent) || 5}%` }" />
+        </div>
+      </div>
     </div>
 
     <!-- Step 2: Threshold -->
@@ -84,6 +90,39 @@
         @toggle="picked.low_quality = !picked.low_quality"
         @clean="cleanOne({ max_quality: threshold }, 'low_quality')"
       />
+      <CategoryRow
+        label="Dark / underexposed"
+        icon="🌑"
+        :count="summary.dark.count"
+        :bytes="summary.dark.bytes"
+        :checked="picked.dark"
+        @toggle="picked.dark = !picked.dark"
+        @clean="cleanOne({ dark: true }, 'dark')"
+      />
+      <CategoryRow
+        label="Overexposed / blown out"
+        icon="☀️"
+        :count="summary.overexposed.count"
+        :bytes="summary.overexposed.bytes"
+        :checked="picked.overexposed"
+        @toggle="picked.overexposed = !picked.overexposed"
+        @clean="cleanOne({ overexposed: true }, 'overexposed')"
+      />
+      <CategoryRow
+        label="Low resolution / tiny"
+        icon="🔬"
+        :count="summary.low_res.count"
+        :bytes="summary.low_res.bytes"
+        :checked="picked.low_res"
+        @toggle="picked.low_res = !picked.low_res"
+        @clean="cleanOne({ low_res: true }, 'low_res')"
+      />
+
+      <!-- Undo banner -->
+      <div v-if="lastBatch" class="card p-3 flex items-center gap-3 bg-brand-500/10 border border-brand-500/30">
+        <span class="text-sm flex-1">✓ Trashed {{ lastDeleted.toLocaleString() }} photos.</span>
+        <button class="text-sm text-brand-400 hover:underline" @click="undo">Undo</button>
+      </div>
 
       <!-- Combined action -->
       <div class="card p-4 flex items-center gap-3 border border-gray-700">
@@ -116,6 +155,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { photosApi } from '../api/photos'
+import { useJob } from '../composables/useJob'
 
 // Inline category row component
 const CategoryRow = {
@@ -153,9 +193,15 @@ const loading = ref(false)
 const cleaning = ref(false)
 const threshold = ref(0.3)
 const summary = ref(null)
-const picked = reactive({ screenshots: true, duplicates: true, low_quality: false })
+const lastBatch = ref(null)
+const lastDeleted = ref(0)
+const picked = reactive({
+  screenshots: true, duplicates: true, low_quality: false,
+  dark: false, overexposed: false, low_res: false,
+})
+const { job, track } = useJob()
 
-const anyPicked = computed(() => picked.screenshots || picked.duplicates || picked.low_quality)
+const anyPicked = computed(() => Object.values(picked).some(Boolean))
 
 onMounted(loadSummary)
 
@@ -174,10 +220,20 @@ async function analyze() {
   analyzeResult.value = null
   try {
     const { data } = await photosApi.analyzeLibrary(true)
-    analyzeResult.value = data
-    await loadSummary()
-  } finally {
+    await track(data.job_id, {
+      interval: 1500,
+      onDone: async (j) => { analyzeResult.value = j.result; analyzing.value = false; await loadSummary() },
+      onError: (j) => { alert('Analyze failed: ' + (j.message || 'error')); analyzing.value = false },
+    })
+  } catch (e) {
     analyzing.value = false
+  }
+}
+
+function recordBatch(res) {
+  if (res?.batch && res.deleted) {
+    lastBatch.value = res.batch
+    lastDeleted.value = res.deleted
   }
 }
 
@@ -185,7 +241,8 @@ async function cleanOne(filters, key) {
   const cat = summary.value[key]
   if (!cat || cat.count === 0) return
   if (!confirm(`Send ${cat.count.toLocaleString()} photos to trash? (favorites kept)`)) return
-  await photosApi.runCleanup(filters)
+  const { data } = await photosApi.runCleanup(filters)
+  recordBatch(data)
   await loadSummary()
 }
 
@@ -194,17 +251,28 @@ async function cleanSelected() {
   const filters = {
     screenshots: picked.screenshots,
     duplicates: picked.duplicates,
+    dark: picked.dark,
+    overexposed: picked.overexposed,
+    low_res: picked.low_res,
     max_quality: picked.low_quality ? threshold.value : null,
   }
   const n = summary.value.total_reclaimable.count
   if (!confirm(`Send up to ${n.toLocaleString()} photos to trash? (favorites kept)`)) return
   cleaning.value = true
   try {
-    await photosApi.runCleanup(filters)
+    const { data } = await photosApi.runCleanup(filters)
+    recordBatch(data)
     await loadSummary()
   } finally {
     cleaning.value = false
   }
+}
+
+async function undo() {
+  if (!lastBatch.value) return
+  await photosApi.undoCleanup(lastBatch.value)
+  lastBatch.value = null
+  await loadSummary()
 }
 
 function formatBytes(b) {

@@ -14,13 +14,15 @@
           <NavLink to="/triage">Triage</NavLink>
           <NavLink to="/screenshots">Screenshots</NavLink>
           <NavLink to="/duplicates">Dupes</NavLink>
-          <NavLink to="/timeline">Timeline</NavLink>
+          <NavLink to="/bursts">Bursts</NavLink>
           <NavLink to="/albums">Albums</NavLink>
           <NavLink to="/search">Search</NavLink>
+          <NavLink to="/timeline">Timeline</NavLink>
           <NavLink to="/map">Map</NavLink>
           <NavLink to="/stats">Stats</NavLink>
-          <NavLink to="/trash">Trash</NavLink>
           <NavLink to="/import">Import</NavLink>
+          <NavLink to="/export">Export</NavLink>
+          <NavLink to="/trash">Trash</NavLink>
         </nav>
 
         <div class="flex items-center gap-2 flex-shrink-0">

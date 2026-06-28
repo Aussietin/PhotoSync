@@ -27,8 +27,19 @@
         :disabled="!folderPath.trim() || loading"
         @click="runImport"
       >
-        {{ loading ? 'Scanning…' : 'Start import' }}
+        {{ loading ? 'Importing…' : 'Start import' }}
       </button>
+
+      <!-- Live progress -->
+      <div v-if="job && job.status !== 'done'" class="space-y-1">
+        <div class="flex justify-between text-xs text-gray-500">
+          <span>{{ job.status === 'error' ? 'Failed' : 'Importing & analyzing…' }}</span>
+          <span v-if="job.percent != null">{{ job.processed }} / {{ job.total }} ({{ job.percent }}%)</span>
+        </div>
+        <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+          <div class="h-full bg-brand-500 transition-all duration-300" :style="{ width: `${job.percent ?? 5}%` }" />
+        </div>
+      </div>
     </div>
 
     <!-- Result -->
@@ -60,12 +71,14 @@
 <script setup>
 import { ref } from 'vue'
 import { photosApi } from '../api/photos'
+import { useJob } from '../composables/useJob'
 
 const folderPath = ref('')
 const recursive = ref(true)
 const loading = ref(false)
 const result = ref(null)
 const error = ref(null)
+const { job, track } = useJob()
 
 async function runImport() {
   loading.value = true
@@ -73,10 +86,13 @@ async function runImport() {
   error.value = null
   try {
     const { data } = await photosApi.importFolder(folderPath.value.trim(), recursive.value)
-    result.value = data
+    // Backend now returns a job id and processes in the background.
+    await track(data.job_id, {
+      onDone: (j) => { result.value = j.result; loading.value = false },
+      onError: (j) => { error.value = j.message || 'Import failed.'; loading.value = false },
+    })
   } catch (e) {
     error.value = e.response?.data?.detail ?? 'Import failed. Check the folder path.'
-  } finally {
     loading.value = false
   }
 }

@@ -78,7 +78,8 @@ async function restoreAll() {
 
 async function emptyTrash() {
   if (!confirm(`Permanently delete all ${photos.value.length} photos? This cannot be undone.`)) return
-  await Promise.all(photos.value.map((p) => photosApi.permanentDelete(p.id)))
+  // Server-side: removes files + rows for everything in trash, not just loaded.
+  await photosApi.emptyTrash()
   photos.value = []
 }
 
