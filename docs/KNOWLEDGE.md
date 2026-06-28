@@ -90,34 +90,39 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 
 ## Roadmap
 
-### Stage 1 — Make ingestion work at 20k (current blockers)
+### Stage 1 — Make ingestion work at 20k ✅
 - [x] HEIC/HEIF support via pillow-heif.
 - [x] Single-commit folder import + auto duplicate clustering after import.
-- [ ] **Background jobs + progress.** Move import/analyze/rescan off the request
-      thread (asyncio task + a job-status table + polling endpoint); show progress
-      in the UI. Without this, 20k will time out.
-- [ ] **Web-friendly previews** (medium JPEG) so HEIC originals display in-browser.
-- [ ] Document the Finder/Image Capture "dump to folder" ingestion workflow.
+- [x] Background jobs + progress (Job model, `services/jobs.py`, `/api/jobs`);
+      import/analyze/rescan run off the request thread with progress polling.
+- [x] Web-friendly JPEG previews so HEIC originals display in-browser.
+- [ ] Document the Finder/Image Capture "dump to folder" workflow (in ExportView UI).
+- [ ] Resumable/parallel browser upload (folder import is the practical path for now).
 
-### Stage 2 — Close the loop with the iPhone (what actually "solves" it)
-- [ ] **Streaming keeper export** — unlimited, structured by date/album, not
-      in-memory.
-- [ ] **Deletion-plan export** (CSV/JSON of filenames to delete) + an iOS Shortcut
-      recipe to consume it.
-- [ ] In-app guidance for the archive-and-replace workflow.
+### Stage 2 — Close the loop with the iPhone ✅
+- [x] Streaming keeper export (built on disk, year/month folders, no 500 cap).
+- [x] Deletion-plan export (CSV/JSON of trashed photos + reasons).
+- [x] In-app archive-and-replace guidance (ExportView).
+- [ ] Actual iOS Shortcut recipe to consume the deletion plan (doc/asset).
 
-### Stage 3 — Make cleanup genuinely "smart"
-- [ ] **Burst grouping** by capture-time proximity + visual similarity
-      ("8 near-identical shots → keep the sharpest").
-- [ ] More cull categories: dark, overexposed, tiny/low-res, memes/received
-      images (no EXIF + messaging-app dimensions), documents/receipts.
-- [ ] **Real AI tagging + semantic search** (replace the color-heuristic
-      placeholder) so you can find-and-cull by content.
-- [ ] Face grouping to keep/cull by person (future).
+### Stage 3 — Make cleanup genuinely "smart" — partial
+- [x] Burst grouping by capture-time proximity + visual similarity (keep-the-best).
+- [x] More cull categories: dark, overexposed, low-res (wired into cleanup).
+- [ ] memes/received images + documents/receipts categories.
+- [ ] **Real AI tagging + semantic search** (still the color-heuristic placeholder;
+      needs an embedding model — deferred, can't validate a model in this env).
+- [ ] Face grouping (future).
 
-### Stage 4 — Safety, trust & polish
-- [ ] **Tests.** Currently zero; for software that deletes photos this is the top
-      risk. Cover dedup/screenshot/quality/cleanup-filter logic + API.
-- [ ] Trash retention / auto-empty after N days; deletion audit log;
-      "undo last cleanup" (batch restore).
-- [ ] Auth before exposing beyond localhost.
+### Stage 4 — Safety, trust & polish ✅ (core)
+- [x] Tests: screenshot detector + BK-tree clustering (pytest). Expand coverage next.
+- [x] Trash retention/auto-empty (`/empty-trash?older_than_days=`), deletion audit
+      log (`DeletionLog`), undo-last-cleanup (batch token + `/undo-cleanup`).
+- [x] Optional API token auth (`API_TOKEN` env → `X-API-Token`).
+- [ ] Broader API/integration test coverage; migrations (Alembic) before real data.
+
+### Known gaps / next
+- Real semantic search + AI tagging (embedding model).
+- DB migrations: new columns rely on `create_all` — fine for fresh DB, but an
+  existing SQLite file needs migrating (Alembic) before this ships with real data.
+- `download-zip` (small selections) is still in-memory; keeper export is the
+  scalable path.
