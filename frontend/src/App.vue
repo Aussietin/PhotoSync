@@ -38,6 +38,13 @@
             </svg>
             <span class="hidden sm:inline">Connect</span>
           </button>
+          <!-- Token lock indicator -->
+          <button
+            v-if="auth.token"
+            class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-green-400 text-sm transition-colors"
+            title="Protected — click to change token"
+            @click="changeToken"
+          >🔒</button>
         </div>
       </div>
     </header>
@@ -61,14 +68,34 @@
     <div class="sm:hidden h-16" />
 
     <ConnectModal v-if="showConnect" @close="showConnect = false" />
+    <TokenPrompt v-if="auth.required" />
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import NavLink from './components/NavLink.vue'
 import BottomTab from './components/BottomTab.vue'
 import ConnectModal from './components/ConnectModal.vue'
+import TokenPrompt from './components/TokenPrompt.vue'
+import { auth, setToken, clearToken, signalAuthRequired } from './auth'
 
 const showConnect = ref(false)
+
+function changeToken() {
+  clearToken()
+  signalAuthRequired()
+}
+
+onMounted(() => {
+  // Auto-login from QR code: ?token=xxx in the URL → save and strip
+  const params = new URLSearchParams(window.location.search)
+  const urlToken = params.get('token')
+  if (urlToken) {
+    setToken(urlToken)
+    params.delete('token')
+    const qs = params.toString()
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
+  }
+})
 </script>
