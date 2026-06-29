@@ -17,7 +17,7 @@
         @click="$emit('next')"
       >›</button>
 
-      <div class="card max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div class="card max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
         <!-- Image -->
         <div class="relative bg-black flex items-center justify-center" style="max-height:60vh">
           <img
@@ -60,7 +60,7 @@
             <span
               v-for="tag in allTags"
               :key="tag"
-              class="px-2 py-0.5 bg-gray-800 rounded-full text-xs text-gray-300"
+              class="px-2.5 py-0.5 bg-brand-500/15 border border-brand-400/20 rounded-full text-xs text-brand-200"
             >{{ tag }}</span>
           </div>
 
@@ -70,7 +70,7 @@
               :value="photo.notes || ''"
               rows="2"
               placeholder="Add a caption…"
-              class="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-300 placeholder-gray-600 resize-none focus:outline-none focus:border-brand-500"
+              class="input resize-none"
               @change="$emit('update-notes', photo.id, $event.target.value)"
             />
           </div>

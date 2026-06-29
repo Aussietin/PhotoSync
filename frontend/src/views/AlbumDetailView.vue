@@ -6,12 +6,10 @@
         <h1 class="text-xl font-bold truncate">{{ album?.name }}</h1>
         <p v-if="album?.description" class="text-sm text-gray-500 truncate">{{ album.description }}</p>
       </div>
-      <button class="btn-ghost text-sm text-red-400 hover:text-red-300" @click="deleteAlbum">Delete album</button>
+      <button class="btn-danger text-sm" @click="deleteAlbum">🗑 Delete album</button>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
-    </div>
+    <PhotoGridSkeleton v-if="loading" :count="18" />
 
     <PhotoGrid
       v-else
@@ -56,8 +54,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { albumsApi, photosApi } from '../api/photos'
 import { useSelection } from '../composables/useSelection'
 import PhotoGrid from '../components/PhotoGrid.vue'
+import PhotoGridSkeleton from '../components/ui/PhotoGridSkeleton.vue'
 import PhotoModal from '../components/PhotoModal.vue'
 import BatchToolbar from '../components/BatchToolbar.vue'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
+
+const { success } = useToast()
+const { confirm } = useConfirm()
 
 const route = useRoute()
 const router = useRouter()
@@ -114,8 +118,15 @@ async function updateNotes(id, notes) {
 }
 
 async function deleteAlbum() {
-  if (!confirm(`Delete album "${album.value?.name}"? Photos will not be deleted.`)) return
+  const ok = await confirm({
+    title: `Delete “${album.value?.name}”?`,
+    message: 'The album is removed, but your photos stay in the library.',
+    confirmText: 'Delete album',
+    danger: true,
+  })
+  if (!ok) return
   await albumsApi.delete(route.params.id)
+  success('Album deleted')
   router.push('/albums')
 }
 
@@ -142,6 +153,6 @@ async function bulkDownload() {
 
 <style scoped>
 .toolbar-btn {
-  @apply flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors whitespace-nowrap;
+  @apply flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200 text-sm font-medium transition-colors whitespace-nowrap;
 }
 </style>

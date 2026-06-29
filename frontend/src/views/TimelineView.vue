@@ -1,9 +1,12 @@
 <template>
   <div>
-    <h1 class="text-xl font-bold mb-5">Timeline</h1>
+    <h1 class="text-2xl font-bold tracking-tight mb-5">Timeline</h1>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
+    <div v-if="loading" class="space-y-8">
+      <section v-for="i in 2" :key="i">
+        <Skeleton width="8rem" height="0.8rem" class="mb-3" />
+        <PhotoGridSkeleton :count="12" />
+      </section>
     </div>
 
     <div v-else class="space-y-8">
@@ -15,10 +18,16 @@
         <PhotoGrid :photos="group.photos" @select="selected = $event" />
       </section>
 
-      <div v-if="!groups.length" class="flex flex-col items-center py-20 text-gray-600">
-        <span class="text-5xl mb-4">📅</span>
-        <p>No dated photos yet — upload some to see a timeline.</p>
-      </div>
+      <EmptyState
+        v-if="!groups.length"
+        icon="📅"
+        title="No dated photos yet"
+        subtitle="Upload photos with date info to see them organised into a timeline."
+      >
+        <template #action>
+          <router-link to="/upload" class="btn-primary text-sm">⬆️ Upload photos</router-link>
+        </template>
+      </EmptyState>
     </div>
 
     <PhotoModal v-if="selected" :photo="selected" @close="selected = null" @delete="deletePhoto" />
@@ -29,6 +38,9 @@
 import { ref, onMounted } from 'vue'
 import { photosApi } from '../api/photos'
 import PhotoGrid from '../components/PhotoGrid.vue'
+import PhotoGridSkeleton from '../components/ui/PhotoGridSkeleton.vue'
+import Skeleton from '../components/ui/Skeleton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 import PhotoModal from '../components/PhotoModal.vue'
 
 const groups = ref([])

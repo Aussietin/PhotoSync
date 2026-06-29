@@ -10,18 +10,24 @@
       </div>
       <div class="flex gap-2">
         <button class="btn-ghost text-sm" :disabled="scanning" @click="rescan">
+          <Spinner v-if="scanning" :size="16" />
           {{ scanning ? 'Scanning…' : '🔍 Re-scan' }}
         </button>
         <button
           v-if="groups.length"
-          class="btn-ghost text-sm text-red-400 hover:text-red-300"
+          class="btn-danger text-sm"
           @click="deleteAllSuggested"
         >Delete all suggested</button>
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
+    <div v-if="loading" class="space-y-6">
+      <div v-for="i in 3" :key="i" class="card p-4 space-y-3">
+        <Skeleton width="12rem" height="0.7rem" />
+        <div class="grid grid-cols-4 gap-2">
+          <div v-for="j in 4" :key="j" class="skeleton aspect-square rounded-xl" />
+        </div>
+      </div>
     </div>
 
     <div v-else-if="groups.length" class="space-y-6">
@@ -89,10 +95,16 @@
       </div>
     </div>
 
-    <div v-else class="flex flex-col items-center py-20 text-gray-600">
-      <span class="text-5xl mb-4">✅</span>
-      <p>No duplicates found — your library is clean!</p>
-    </div>
+    <EmptyState
+      v-else
+      icon="✅"
+      title="No duplicates found"
+      subtitle="Your library is squeaky clean. Re-scan any time after adding new photos."
+    >
+      <template #action>
+        <button class="btn-soft text-sm" :disabled="scanning" @click="rescan">🔍 Re-scan</button>
+      </template>
+    </EmptyState>
   </div>
 </template>
 
@@ -100,7 +112,14 @@
 import { ref, computed, reactive, onMounted } from 'vue'
 import { photosApi } from '../api/photos'
 import { useJob } from '../composables/useJob'
+import Skeleton from '../components/ui/Skeleton.vue'
+import Spinner from '../components/ui/Spinner.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
 
+const { success } = useToast()
+const { confirm } = useConfirm()
 const { track } = useJob()
 
 const groups = ref([])
@@ -153,13 +172,21 @@ async function deleteChecked(group) {
     )
     .filter((g) => g.duplicates.length)
   delete checked[group.original.id]
+  success(`Removed ${ids.length} duplicate${ids.length > 1 ? 's' : ''}`)
 }
 
 async function deleteAllSuggested() {
   const allIds = groups.value.flatMap((g) => [...(checked[g.original.id] ?? [])])
   if (!allIds.length) return
-  if (!confirm(`Delete ${allIds.length} suggested duplicates?`)) return
+  const ok = await confirm({
+    title: `Delete ${allIds.length} suggested duplicate${allIds.length > 1 ? 's' : ''}?`,
+    message: 'The best copy in each group is kept. Deleted photos go to Trash.',
+    confirmText: 'Delete duplicates',
+    danger: true,
+  })
+  if (!ok) return
   await photosApi.bulkDelete(allIds)
+  success(`Removed ${allIds.length} duplicates`)
   await reload()
 }
 

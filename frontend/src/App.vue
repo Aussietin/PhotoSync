@@ -1,35 +1,33 @@
 <template>
   <div class="flex flex-col min-h-screen">
     <!-- Top nav -->
-    <header class="sticky top-0 z-50 bg-gray-950/90 backdrop-blur border-b border-gray-800">
-      <div class="max-w-screen-xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
-        <router-link to="/" class="text-lg font-bold text-brand-500 tracking-tight flex-shrink-0">
-          PhotoSync
+    <header class="sticky top-0 z-50 bg-ink-950/70 backdrop-blur-xl border-b border-white/5">
+      <div class="max-w-screen-xl mx-auto px-4 h-14 flex items-center gap-2">
+        <router-link to="/" class="flex items-center gap-2 flex-shrink-0 group">
+          <span class="relative grid place-items-center w-8 h-8 rounded-xl bg-brand-gradient shadow-glow">
+            <svg class="text-white" width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M3 7a2 2 0 0 1 2-2h2l1.5-2h7L19 5h0a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+              <circle cx="12" cy="12.5" r="3.2" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+          </span>
+          <span class="text-lg font-extrabold tracking-tight text-gradient">PhotoSync</span>
         </router-link>
 
         <!-- Desktop nav -->
-        <nav class="hidden sm:flex items-center gap-0.5 flex-1 overflow-x-auto">
-          <NavLink to="/">Library</NavLink>
-          <NavLink to="/cleanup">✨ Cleanup</NavLink>
-          <NavLink to="/triage">Triage</NavLink>
-          <NavLink to="/screenshots">Screenshots</NavLink>
-          <NavLink to="/duplicates">Dupes</NavLink>
-          <NavLink to="/bursts">Bursts</NavLink>
-          <NavLink to="/albums">Albums</NavLink>
-          <NavLink to="/search">Search</NavLink>
-          <NavLink to="/timeline">Timeline</NavLink>
-          <NavLink to="/map">Map</NavLink>
-          <NavLink to="/stats">Stats</NavLink>
-          <NavLink to="/import">Import</NavLink>
-          <NavLink to="/export">Export</NavLink>
-          <NavLink to="/trash">Trash</NavLink>
+        <nav class="hidden sm:flex items-center gap-0.5 flex-1 justify-center">
+          <NavLink v-for="item in primaryNav" :key="item.to" :to="item.to" :icon="item.icon">
+            {{ item.label }}
+          </NavLink>
+          <NavMenu />
         </nav>
 
-        <div class="flex items-center gap-2 flex-shrink-0">
-          <router-link to="/upload" class="btn-primary text-sm hidden sm:flex">+ Upload</router-link>
+        <div class="flex items-center gap-2 flex-shrink-0 ml-auto sm:ml-0">
+          <router-link to="/upload" class="btn-primary text-sm py-1.5 px-3 hidden sm:flex">
+            <span class="text-base leading-none">＋</span> Upload
+          </router-link>
           <!-- QR connect -->
           <button
-            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 text-sm font-medium transition-colors"
             title="Connect phone"
             @click="showConnect = true"
           >
@@ -44,31 +42,63 @@
 
     <!-- Main content -->
     <main class="flex-1 max-w-screen-xl mx-auto w-full px-4 py-6">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </router-view>
     </main>
 
     <!-- Mobile bottom nav -->
-    <nav class="sm:hidden fixed bottom-0 inset-x-0 bg-gray-950/95 backdrop-blur border-t border-gray-800">
-      <div class="grid grid-cols-5 h-16">
+    <nav class="sm:hidden fixed bottom-0 inset-x-0 z-50 bg-ink-950/85 backdrop-blur-xl border-t border-white/5">
+      <div class="relative grid grid-cols-5 h-16 items-center">
         <BottomTab to="/" icon="🖼️" label="Library" />
         <BottomTab to="/triage" icon="🃏" label="Triage" />
-        <BottomTab to="/cleanup" icon="✨" label="Cleanup" :primary="true" />
-        <BottomTab to="/screenshots" icon="📱" label="Screens" />
+
+        <!-- Floating primary action -->
+        <div class="flex justify-center">
+          <router-link
+            to="/cleanup"
+            class="relative -translate-y-4 w-14 h-14 rounded-2xl bg-brand-gradient shadow-glow grid place-items-center text-2xl active:scale-95 transition-transform"
+          >
+            <span class="absolute inset-0 rounded-2xl bg-brand-400/40 animate-pulse-ring" />
+            <span class="relative">✨</span>
+          </router-link>
+        </div>
+
         <BottomTab to="/search" icon="🔍" label="Search" />
+        <button
+          class="flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-gray-500 hover:text-gray-300 transition-colors"
+          @click="showMore = true"
+        >
+          <span class="text-xl leading-none">⋯</span>
+          <span>More</span>
+        </button>
       </div>
     </nav>
 
     <div class="sm:hidden h-16" />
 
+    <MobileMore :open="showMore" @close="showMore = false" />
     <ConnectModal v-if="showConnect" @close="showConnect = false" />
+
+    <!-- Global overlays -->
+    <ToastHost />
+    <ConfirmHost />
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import NavLink from './components/NavLink.vue'
+import NavMenu from './components/NavMenu.vue'
 import BottomTab from './components/BottomTab.vue'
+import MobileMore from './components/MobileMore.vue'
 import ConnectModal from './components/ConnectModal.vue'
+import ToastHost from './components/ui/ToastHost.vue'
+import ConfirmHost from './components/ui/ConfirmHost.vue'
+import { primaryNav } from './nav'
 
 const showConnect = ref(false)
+const showMore = ref(false)
 </script>
