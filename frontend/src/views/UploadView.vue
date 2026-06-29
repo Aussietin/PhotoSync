@@ -1,6 +1,6 @@
 <template>
   <div class="max-w-xl mx-auto">
-    <h1 class="text-xl font-bold mb-6">Upload Photos</h1>
+    <h1 class="text-2xl font-bold tracking-tight mb-6">Upload Photos</h1>
 
     <UploadZone @files="onFiles" />
 
@@ -18,14 +18,15 @@
         />
         <div class="flex-1 min-w-0">
           <p class="text-sm truncate text-gray-300">{{ item.name }}</p>
-          <div class="mt-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div class="mt-1.5 h-1.5 bg-ink-800 rounded-full overflow-hidden">
             <div
-              class="h-full bg-brand-500 transition-all duration-300"
-              :style="{ width: item.progress + '%' }"
+              class="h-full rounded-full transition-all duration-300"
+              :class="item.status === 'error' ? 'bg-red-500' : item.status === 'done' ? 'bg-green-500' : 'bg-brand-gradient'"
+              :style="{ width: (item.status === 'done' ? 100 : item.progress) + '%' }"
             />
           </div>
         </div>
-        <span class="text-xs text-gray-500 flex-shrink-0">
+        <span class="text-sm flex-shrink-0 w-9 text-right" :class="item.status === 'done' ? 'text-green-400' : item.status === 'error' ? 'text-red-400' : 'text-gray-500'">
           {{ item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : item.progress + '%' }}
         </span>
       </div>
@@ -45,6 +46,9 @@
 import { ref } from 'vue'
 import { photosApi } from '../api/photos'
 import UploadZone from '../components/UploadZone.vue'
+import { useToast } from '../composables/useToast'
+
+const { success, error: toastError } = useToast()
 
 const queue = ref([])
 const uploading = ref(false)
@@ -63,6 +67,8 @@ function onFiles(files) {
 
 async function startUpload() {
   uploading.value = true
+  let ok = 0
+  let failed = 0
   for (const item of queue.value.filter((i) => i.status === 'pending')) {
     item.status = 'uploading'
     try {
@@ -72,10 +78,14 @@ async function startUpload() {
       item.status = 'done'
       item.progress = 100
       doneCount.value++
+      ok++
     } catch {
       item.status = 'error'
+      failed++
     }
   }
   uploading.value = false
+  if (ok) success(`Uploaded ${ok} photo${ok > 1 ? 's' : ''}`)
+  if (failed) toastError(`${failed} upload${failed > 1 ? 's' : ''} failed`)
 }
 </script>

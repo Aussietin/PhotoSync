@@ -8,22 +8,130 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-gray-950 text-gray-100 min-h-screen;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    @apply bg-ink-950 text-gray-100 min-h-screen antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, rgba(99, 102, 241, 0.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, rgba(168, 85, 247, 0.1), transparent 55%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    background: rgba(99, 102, 241, 0.35);
+  }
+
+  /* Slim, themed scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.22);
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.4);
   }
 }
 
 @layer components {
+  /* ---- Buttons ---- */
   .btn {
-    @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-medium transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-gray-950;
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
   }
   .btn-primary {
-    @apply btn bg-brand-500 hover:bg-brand-600 text-white;
+    @apply btn text-white shadow-soft;
+    background-image: linear-gradient(135deg, #3b82f6 0%, #6366f1 55%, #a855f7 100%);
+    background-size: 140% 140%;
+    background-position: 0% 50%;
+  }
+  .btn-primary:hover {
+    background-position: 100% 50%;
+    @apply shadow-glow;
   }
   .btn-ghost {
-    @apply btn bg-transparent hover:bg-gray-800 text-gray-300;
+    @apply btn bg-white/5 hover:bg-white/10 text-gray-200 border border-white/5 hover:border-white/10 backdrop-blur-sm;
   }
+  .btn-soft {
+    @apply btn bg-brand-500/15 hover:bg-brand-500/25 text-brand-200 border border-brand-400/20;
+  }
+  .btn-danger {
+    @apply btn bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/20;
+  }
+
+  /* ---- Surfaces ---- */
   .card {
-    @apply bg-gray-900 rounded-2xl overflow-hidden;
+    @apply bg-ink-900/80 rounded-2xl overflow-hidden border border-white/5 shadow-card backdrop-blur-sm;
   }
+  .glass {
+    @apply bg-ink-900/60 backdrop-blur-xl border border-white/10 rounded-2xl;
+  }
+  .surface-hover {
+    @apply transition-all duration-200 hover:border-white/10 hover:bg-ink-850/80;
+  }
+
+  /* ---- Chips / pills ---- */
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors;
+  }
+  .chip-muted {
+    @apply chip bg-white/5 text-gray-300 hover:bg-white/10 border border-white/5;
+  }
+  .chip-active {
+    @apply chip text-white border border-brand-400/40 bg-brand-500/20;
+  }
+
+  /* ---- Inputs ---- */
+  .input {
+    @apply w-full bg-ink-850/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 transition-colors focus:outline-none focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20;
+  }
+
+  /* ---- Skeleton shimmer ---- */
+  .skeleton {
+    @apply relative overflow-hidden bg-ink-800/70 rounded-lg;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(255, 255, 255, 0.06) 40%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.06) 60%,
+      transparent 100%
+    );
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #60a5fa 0%, #818cf8 50%, #c084fc 100%);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ---- Global route / list transitions ---- */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }

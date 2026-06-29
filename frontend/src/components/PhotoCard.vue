@@ -42,17 +42,12 @@
       :title="`Quality: ${Math.round(photo.quality_score * 100)}%`"
     />
 
-    <!-- Duplicate badge -->
-    <span
-      v-if="photo.is_duplicate"
-      class="absolute bottom-1 left-1 bg-yellow-500 text-black text-xs font-bold px-1 rounded leading-tight"
-    >DUP</span>
-
-    <!-- Screenshot badge -->
-    <span
-      v-if="photo.is_screenshot"
-      class="absolute bottom-1 left-1 bg-purple-500 text-white text-xs font-bold px-1 rounded leading-tight"
-    >SS</span>
+    <!-- Status badges -->
+    <div class="absolute bottom-1 left-1 flex flex-col gap-0.5 items-start">
+      <span v-if="photo.is_screenshot" class="bg-purple-500 text-white text-xs font-bold px-1 rounded leading-tight">SS</span>
+      <span v-if="photo.is_duplicate" class="bg-yellow-500 text-black text-xs font-bold px-1 rounded leading-tight">DUP</span>
+      <span v-if="photo.is_meme" class="bg-orange-600 text-white text-xs font-bold px-1 rounded leading-tight">RCV</span>
+    </div>
 
     <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
   </div>

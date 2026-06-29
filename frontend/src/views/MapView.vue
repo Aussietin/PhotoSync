@@ -1,21 +1,24 @@
 <template>
   <div class="space-y-3">
     <div class="flex items-center justify-between">
-      <h1 class="text-xl font-bold">Map</h1>
+      <h1 class="text-2xl font-bold tracking-tight">Map</h1>
       <span class="text-sm text-gray-500">{{ pins.length }} photo{{ pins.length !== 1 ? 's' : '' }} with GPS</span>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading map…</span>
+    <div v-if="loading" class="skeleton rounded-2xl" style="height: 70vh">
+      <div class="h-full grid place-items-center">
+        <Spinner :size="32" label="Loading map…" />
+      </div>
     </div>
 
-    <div v-else-if="!pins.length" class="flex flex-col items-center py-20 text-gray-600">
-      <span class="text-5xl mb-4">📍</span>
-      <p>No photos with GPS data yet.</p>
-      <p class="text-sm mt-1">GPS is embedded by iPhone when Location Services are enabled for Camera.</p>
-    </div>
+    <EmptyState
+      v-else-if="!pins.length"
+      icon="📍"
+      title="No photos with GPS data yet"
+      subtitle="GPS is embedded by iPhone when Location Services are enabled for the Camera."
+    />
 
-    <div v-else ref="mapEl" class="rounded-2xl overflow-hidden border border-gray-800" style="height: 70vh" />
+    <div v-else ref="mapEl" class="rounded-2xl overflow-hidden border border-white/10 shadow-soft" style="height: 70vh" />
 
     <!-- Detail popup (shown when pin clicked) -->
     <Teleport to="body">
@@ -44,6 +47,8 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { photosApi } from '../api/photos'
+import Spinner from '../components/ui/Spinner.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 
 const mapEl = ref(null)
 const pins = ref([])

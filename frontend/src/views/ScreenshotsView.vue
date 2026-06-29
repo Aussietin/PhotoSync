@@ -36,21 +36,19 @@
       <button class="ml-auto text-gray-500 hover:text-gray-300 text-xs" @click="scanResult = null">✕</button>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
-    </div>
+    <PhotoGridSkeleton v-if="loading && !photos.length" :count="18" />
 
     <template v-else-if="photos.length">
       <!-- Batch controls -->
       <div class="flex items-center gap-2 mb-3">
         <button
-          class="px-3 py-1.5 rounded-xl text-sm font-medium transition-colors"
-          :class="sel.selecting.value ? 'bg-brand-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+          class="text-sm"
+          :class="sel.selecting.value ? 'chip-active' : 'chip-muted'"
           @click="sel.selecting.value ? sel.clear() : (sel.selecting.value = true)"
         >Select</button>
         <button
           v-if="sel.selecting.value"
-          class="px-3 py-1.5 rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 text-sm"
+          class="chip-muted text-sm"
           @click="sel.selectAll(photos.map(p => p.id))"
         >All ({{ photos.length }})</button>
       </div>
@@ -66,11 +64,18 @@
       <div ref="sentinel" class="h-10" />
     </template>
 
-    <div v-else class="flex flex-col items-center py-20 text-gray-600">
-      <span class="text-5xl mb-4">📱</span>
-      <p class="mb-2">No screenshots detected.</p>
-      <p class="text-sm">Run "Scan library" to check existing photos.</p>
-    </div>
+    <EmptyState
+      v-else
+      icon="📱"
+      title="No screenshots detected"
+      subtitle="Run a library scan to find existing screenshots by their dimensions and filenames."
+    >
+      <template #action>
+        <button class="btn-primary text-sm" :disabled="scanning" @click="runScan">
+          {{ scanning ? 'Scanning…' : '🔍 Scan library' }}
+        </button>
+      </template>
+    </EmptyState>
 
     <PhotoModal
       v-if="modalPhoto"
@@ -97,8 +102,15 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { photosApi } from '../api/photos'
 import { useSelection } from '../composables/useSelection'
 import PhotoGrid from '../components/PhotoGrid.vue'
+import PhotoGridSkeleton from '../components/ui/PhotoGridSkeleton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 import PhotoModal from '../components/PhotoModal.vue'
 import BatchToolbar from '../components/BatchToolbar.vue'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
+
+const { success } = useToast()
+const { confirm } = useConfirm()
 
 const photos = ref([])
 const total = ref(0)
@@ -157,21 +169,30 @@ async function softDelete(id) {
 }
 
 async function deleteAll() {
-  if (!confirm(`Send all ${total.value} screenshots to trash? (favorites are kept)`)) return
+  const ok = await confirm({
+    title: `Move all ${total.value} screenshots to Trash?`,
+    message: 'Favorites are always kept. You can restore from Trash later.',
+    confirmText: 'Move to Trash',
+    danger: true,
+  })
+  if (!ok) return
   // Server-side: trashes EVERY screenshot, not just the ones scrolled into view.
   const { data } = await photosApi.runCleanup({ screenshots: true })
   photos.value = []
   total.value = 0
   sel.clear()
   scanResult.value = { scanned: data.deleted, total_screenshots: 0, updated: data.deleted }
+  success(`Moved ${data.deleted} screenshots to Trash`)
   await load(true)
 }
 
 async function bulkDelete() {
+  const n = sel.count.value
   await photosApi.bulkDelete(sel.ids.value)
   photos.value = photos.value.filter((p) => !sel.selected.value.has(p.id))
-  total.value -= sel.count.value
+  total.value -= n
   sel.clear()
+  success(`Moved ${n} to Trash`)
 }
 
 async function bulkDownload() {

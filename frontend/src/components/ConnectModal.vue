@@ -44,16 +44,17 @@
 import { ref, onMounted } from 'vue'
 import QRCode from 'qrcode'
 import axios from 'axios'
+import { auth } from '../auth'
 
 defineEmits(['close'])
 
 const canvas = ref(null)
 const url = ref(window.location.origin)
+const qrUrl = ref('')
 const loading = ref(true)
 const error = ref(null)
 
 onMounted(async () => {
-  // Try to get the server's local network IP for a cross-device URL
   try {
     const { data } = await axios.get('/api/server-info')
     const ip = data.local_ips?.[0]
@@ -67,8 +68,12 @@ onMounted(async () => {
     loading.value = false
   }
 
-  // Render QR code onto canvas
-  await QRCode.toCanvas(canvas.value, url.value, {
+  // Embed token in QR so the phone auto-logs in on scan
+  const target = new URL(url.value)
+  if (auth.token) target.searchParams.set('token', auth.token)
+  qrUrl.value = target.toString()
+
+  await QRCode.toCanvas(canvas.value, qrUrl.value, {
     width: 220,
     margin: 1,
     color: { dark: '#000000', light: '#ffffff' },

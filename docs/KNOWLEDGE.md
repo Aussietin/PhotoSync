@@ -80,8 +80,16 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - **O(n²) duplicate scan** would have taken hours on 20k. See two-tier design.
 - **"Delete all" mapped the paginated client buffer**, so it deleted only what was
   scrolled into view. Mass actions must be server-side filter-based.
-- **ZIP export builds the whole archive in memory** and caps at 500 photos — fine
-  for small selections, needs streaming for full-library export (Stage 2).
+- **ZIP export built the whole archive in memory** and capped at 500 photos.
+  Fixed: `POST /photos/download-zip` now builds the archive on a temp file on
+  disk (like the keepers export) with a `BackgroundTask` cleanup, and the 500
+  cap is gone. Streaming keeper export remains the recommended path for full-
+  library (20k) exports.
+- **AI must stay local & free.** Privacy is the whole point of self-hosting a
+  photo cleaner — sending 20k personal photos to a paid API is a non-starter.
+  CLIP via `sentence-transformers` runs on a plain CPU laptop (~15-25 min to
+  index 20k once; search is then instant). Kept as a *soft* dependency so the
+  core app and the test suite never need torch — tests mock the encoder.
 - **Long operations run synchronously in the request** (import, analyze). At 20k
   these will exceed HTTP timeouts and block the worker — needs background jobs
   (Stage 1).
@@ -96,7 +104,7 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - [x] Background jobs + progress (Job model, `services/jobs.py`, `/api/jobs`);
       import/analyze/rescan run off the request thread with progress polling.
 - [x] Web-friendly JPEG previews so HEIC originals display in-browser.
-- [ ] Document the Finder/Image Capture "dump to folder" workflow (in ExportView UI).
+- [x] Document the Finder/Image Capture "dump to folder" workflow (in ImportView: Finder/Image Capture, iCloud, AirDrop options).
 - [ ] Resumable/parallel browser upload (folder import is the practical path for now).
 
 ### Stage 2 — Close the loop with the iPhone ✅
@@ -108,21 +116,46 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 ### Stage 3 — Make cleanup genuinely "smart" — partial
 - [x] Burst grouping by capture-time proximity + visual similarity (keep-the-best).
 - [x] More cull categories: dark, overexposed, low-res (wired into cleanup).
-- [ ] memes/received images + documents/receipts categories.
-- [ ] **Real AI tagging + semantic search** (still the color-heuristic placeholder;
-      needs an embedding model — deferred, can't validate a model in this env).
-- [ ] Face grouping (future).
+- [x] **Memes/received images**: no-EXIF + not-screenshot filter catches WhatsApp
+      forwards, meme downloads, etc. Pure SQL condition, no new DB column.
+      `is_meme` derived field in `_serialize()`, orange "RCV" badge in PhotoCard.
+- [ ] Documents/receipts category (future).
+- [x] **Real AI tagging + semantic search — fully local, no API, no cost.**
+      `services/embeddings.py` wraps a local CLIP model (`sentence-transformers
+      clip-ViT-B-32`, CPU) behind a soft dependency: if it isn't installed the
+      app still runs and tagging falls back to the colour heuristic. One model
+      gives **both** semantic search (embed the query, cosine-rank stored image
+      embeddings) and **zero-shot cleanup tags** (image↔candidate-label
+      similarity). Embeddings persist in `Photo.clip_embedding` (float32 blob,
+      ~2KB) so search is a single numpy matmul — instant at 20k. Enabled via
+      `pip install -r requirements-ai.txt`; indexed by `POST /photos/analyze`.
+      Endpoint: `GET /api/search/semantic?q=…`. **No image or query text ever
+      leaves the machine.**
+- [ ] Face grouping (future — local InsightFace/face_recognition).
+- [ ] Photo descriptions / captioning (future — local BLIP, heavier model).
 
-### Stage 4 — Safety, trust & polish ✅ (core)
-- [x] Tests: screenshot detector + BK-tree clustering (pytest). Expand coverage next.
+### Stage 4 — Safety, trust & polish ✅
+- [x] Tests: screenshot detector + BK-tree clustering + 36 integration tests
+      covering cleanup, undo, meme filter, photo CRUD, bulk ops (all green).
+- [x] **Alembic migrations**: `init_db()` runs `alembic upgrade head` on startup.
+      `manage.py` helper for makemigration/stamp/history. Existing DBs: run
+      `python manage.py stamp` once, then future migrations apply cleanly.
 - [x] Trash retention/auto-empty (`/empty-trash?older_than_days=`), deletion audit
       log (`DeletionLog`), undo-last-cleanup (batch token + `/undo-cleanup`).
 - [x] Optional API token auth (`API_TOKEN` env → `X-API-Token`).
-- [ ] Broader API/integration test coverage; migrations (Alembic) before real data.
+- [x] **iOS Shortcut recipe** documented in ExportView (step-by-step using the
+      Shortcuts app + deletion-plan CSV to delete culled photos on the phone).
+
+### Bug fixes shipped (were silent production failures, caught by tests)
+- Route shadowing: `GET /cleanup-summary`, `/cleanup-history`, `/screenshots`,
+  `/burst-groups`, `/duplicate-groups`, `/triage-queue`, `POST /bulk/favorite`,
+  `POST /bulk/restore` all returned 422 because they were registered after
+  parameterized `/{photo_id}` routes. Fixed by moving `/{photo_id}` routes last.
+- `GET /trash` missing `selectinload(Photo.tags)` → `MissingGreenlet` crash for
+  trashed photos with tags (async lazy-load not supported in SQLAlchemy 2.x).
+- `POST /undo-cleanup/{batch}` returned 200 for unknown batch tokens; now 404.
 
 ### Known gaps / next
-- Real semantic search + AI tagging (embedding model).
-- DB migrations: new columns rely on `create_all` — fine for fresh DB, but an
-  existing SQLite file needs migrating (Alembic) before this ships with real data.
-- `download-zip` (small selections) is still in-memory; keeper export is the
-  scalable path.
+- Face grouping + photo captioning (both deferred; local models, no cloud).
+- AI indexing runs one image at a time in the analyze loop — batching the CLIP
+  encode would speed up the initial 20k pass (works fine, just not optimal).

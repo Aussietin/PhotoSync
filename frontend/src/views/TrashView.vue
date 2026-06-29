@@ -1,15 +1,21 @@
 <template>
   <div>
     <div class="flex items-center justify-between mb-5">
-      <h1 class="text-xl font-bold">Trash <span class="text-gray-500 font-normal text-base">({{ photos.length }})</span></h1>
+      <h1 class="text-2xl font-bold tracking-tight">Trash <span class="text-gray-500 font-normal text-base">({{ photos.length }})</span></h1>
       <div class="flex gap-2">
-        <button v-if="photos.length" class="btn-ghost text-sm" @click="restoreAll">Restore all</button>
-        <button v-if="photos.length" class="btn-ghost text-sm text-red-400 hover:text-red-300" @click="emptyTrash">Empty trash</button>
+        <button v-if="photos.length" class="btn-ghost text-sm" @click="restoreAll">↩️ Restore all</button>
+        <button v-if="photos.length" class="btn-danger text-sm" @click="emptyTrash">🗑 Empty trash</button>
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
+    <div v-if="loading" class="space-y-1">
+      <div v-for="i in 6" :key="i" class="card flex items-center gap-3 p-3">
+        <Skeleton width="3.5rem" height="3.5rem" rounded="rounded-xl" />
+        <div class="flex-1 space-y-2">
+          <Skeleton width="50%" height="0.8rem" />
+          <Skeleton width="25%" height="0.65rem" />
+        </div>
+      </div>
     </div>
 
     <div v-else-if="photos.length" class="space-y-1">
@@ -34,16 +40,25 @@
       </div>
     </div>
 
-    <div v-else class="flex flex-col items-center py-20 text-gray-600">
-      <span class="text-5xl mb-4">🗑</span>
-      <p>Trash is empty.</p>
-    </div>
+    <EmptyState
+      v-else
+      icon="🗑️"
+      title="Trash is empty"
+      subtitle="Deleted photos land here first, so you can always restore them."
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { photosApi } from '../api/photos'
+import Skeleton from '../components/ui/Skeleton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
+
+const { success } = useToast()
+const { confirm } = useConfirm()
 
 const photos = ref([])
 const loading = ref(false)
@@ -63,24 +78,42 @@ async function load() {
 async function restore(id) {
   await photosApi.restore(id)
   photos.value = photos.value.filter((p) => p.id !== id)
+  success('Photo restored')
 }
 
 async function permanentDelete(id) {
-  if (!confirm('Permanently delete this photo? This cannot be undone.')) return
+  const ok = await confirm({
+    title: 'Delete forever?',
+    message: 'This photo will be permanently removed. This cannot be undone.',
+    confirmText: 'Delete forever',
+    danger: true,
+  })
+  if (!ok) return
   await photosApi.permanentDelete(id)
   photos.value = photos.value.filter((p) => p.id !== id)
+  success('Photo permanently deleted')
 }
 
 async function restoreAll() {
+  const n = photos.value.length
   await photosApi.bulkRestore(photos.value.map((p) => p.id))
   photos.value = []
+  success(`Restored ${n} photo${n > 1 ? 's' : ''}`)
 }
 
 async function emptyTrash() {
-  if (!confirm(`Permanently delete all ${photos.value.length} photos? This cannot be undone.`)) return
+  const n = photos.value.length
+  const ok = await confirm({
+    title: `Permanently delete ${n} photo${n > 1 ? 's' : ''}?`,
+    message: 'Everything in Trash will be gone for good. This cannot be undone.',
+    confirmText: 'Empty trash',
+    danger: true,
+  })
+  if (!ok) return
   // Server-side: removes files + rows for everything in trash, not just loaded.
   await photosApi.emptyTrash()
   photos.value = []
+  success('Trash emptied')
 }
 
 function formatRelative(iso) {

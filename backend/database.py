@@ -12,9 +12,20 @@ class Base(DeclarativeBase):
 
 
 async def init_db():
-    from models import photo  # noqa: F401 — registers models with Base
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Run Alembic migrations to head so schema is always current."""
+    import asyncio
+    from alembic.config import Config
+    from alembic import command
+
+    def _run_migrations():
+        import os
+        ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+        cfg = Config(ini_path)
+        cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "alembic"))
+        cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+        command.upgrade(cfg, "head")
+
+    await asyncio.get_event_loop().run_in_executor(None, _run_migrations)
 
 
 async def get_db():

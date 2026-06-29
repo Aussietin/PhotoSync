@@ -1,6 +1,23 @@
 import axios from 'axios'
+import { auth, signalAuthRequired, clearToken } from '../auth'
 
 const api = axios.create({ baseURL: '/api' })
+
+api.interceptors.request.use((config) => {
+  if (auth.token) config.headers['X-API-Token'] = auth.token
+  return config
+})
+
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err.response?.status === 401) {
+      clearToken()
+      signalAuthRequired()
+    }
+    return Promise.reject(err)
+  },
+)
 
 export const photosApi = {
   list: (params) => api.get('/photos', { params }),
@@ -56,8 +73,10 @@ export const photosApi = {
     }),
 
   // Background jobs (import / analyze / rescan return { job_id })
-  analyzeLibrary: (recompute_quality = true) =>
-    api.post('/photos/analyze', null, { params: { recompute_quality } }),
+  analyzeLibrary: (params = {}) =>
+    api.post('/photos/analyze', null, {
+      params: { recompute_quality: true, ai_tagging: true, ...params },
+    }),
 }
 
 export const jobsApi = {
@@ -66,12 +85,18 @@ export const jobsApi = {
 }
 
 export const exportApi = {
-  // Returns the URL for a direct browser download (streamed from server)
   keepersUrl: (opts = {}) => {
-    const p = new URLSearchParams(opts).toString()
+    const p = new URLSearchParams(
+      auth.token ? { ...opts, token: auth.token } : opts,
+    ).toString()
     return `/api/export/keepers${p ? `?${p}` : ''}`
   },
-  deletionPlanUrl: (fmt = 'csv') => `/api/export/deletion-plan?fmt=${fmt}`,
+  deletionPlanUrl: (fmt = 'csv') => {
+    const p = new URLSearchParams(
+      auth.token ? { fmt, token: auth.token } : { fmt },
+    ).toString()
+    return `/api/export/deletion-plan?${p}`
+  },
 }
 
 export const tagsApi = {
@@ -82,6 +107,8 @@ export const tagsApi = {
 
 export const searchApi = {
   search: (params) => api.get('/search', { params }),
+  // Semantic (meaning-based) search via local CLIP embeddings.
+  semantic: (q, params = {}) => api.get('/search/semantic', { params: { q, ...params } }),
 }
 
 export const albumsApi = {

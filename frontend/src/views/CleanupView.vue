@@ -27,14 +27,12 @@
         {{ analyzeResult.duplicates?.duplicates ?? 0 }} duplicates,
         {{ analyzeResult.quality_recomputed }} quality scores updated.
       </div>
-      <div v-if="analyzing" class="space-y-1">
+      <div v-if="analyzing" class="space-y-1.5">
         <div class="flex justify-between text-xs text-gray-500">
           <span>Reading thumbnails &amp; clustering — can take a few minutes for large libraries.</span>
           <span v-if="job && job.percent != null">{{ job.percent }}%</span>
         </div>
-        <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
-          <div class="h-full bg-brand-500 transition-all duration-300" :style="{ width: `${(job && job.percent) || 5}%` }" />
-        </div>
+        <ProgressBar :value="(job && job.percent) || 5" />
       </div>
     </div>
 
@@ -57,7 +55,7 @@
 
     <!-- Step 3: Categories -->
     <div v-if="loading" class="flex justify-center py-10">
-      <span class="text-gray-500 animate-pulse">Loading summary…</span>
+      <Spinner :size="26" label="Loading summary…" />
     </div>
 
     <div v-else-if="summary" class="space-y-3">
@@ -117,6 +115,17 @@
         @toggle="picked.low_res = !picked.low_res"
         @clean="cleanOne({ low_res: true }, 'low_res')"
       />
+      <CategoryRow
+        label="Received / memes"
+        icon="📨"
+        :count="summary.memes.count"
+        :bytes="summary.memes.bytes"
+        :checked="picked.memes"
+        @toggle="picked.memes = !picked.memes"
+        @clean="cleanOne({ memes: true }, 'memes')"
+      >
+        <template #hint>Images with no camera data — WhatsApp forwards, memes, downloads (not screenshots).</template>
+      </CategoryRow>
 
       <!-- Undo banner -->
       <div v-if="lastBatch" class="card p-3 flex items-center gap-3 bg-brand-500/10 border border-brand-500/30">
@@ -156,6 +165,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { photosApi } from '../api/photos'
 import { useJob } from '../composables/useJob'
+import Spinner from '../components/ui/Spinner.vue'
+import ProgressBar from '../components/ui/ProgressBar.vue'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
+
+const { success, error: toastError } = useToast()
+const { confirm } = useConfirm()
 
 // Inline category row component
 const CategoryRow = {
@@ -197,7 +213,7 @@ const lastBatch = ref(null)
 const lastDeleted = ref(0)
 const picked = reactive({
   screenshots: true, duplicates: true, low_quality: false,
-  dark: false, overexposed: false, low_res: false,
+  dark: false, overexposed: false, low_res: false, memes: false,
 })
 const { job, track } = useJob()
 
@@ -219,11 +235,11 @@ async function analyze() {
   analyzing.value = true
   analyzeResult.value = null
   try {
-    const { data } = await photosApi.analyzeLibrary(true)
+    const { data } = await photosApi.analyzeLibrary()
     await track(data.job_id, {
       interval: 1500,
-      onDone: async (j) => { analyzeResult.value = j.result; analyzing.value = false; await loadSummary() },
-      onError: (j) => { alert('Analyze failed: ' + (j.message || 'error')); analyzing.value = false },
+      onDone: async (j) => { analyzeResult.value = j.result; analyzing.value = false; await loadSummary(); success('Library analysis complete') },
+      onError: (j) => { toastError('Analyze failed: ' + (j.message || 'error')); analyzing.value = false },
     })
   } catch (e) {
     analyzing.value = false
@@ -240,10 +256,17 @@ function recordBatch(res) {
 async function cleanOne(filters, key) {
   const cat = summary.value[key]
   if (!cat || cat.count === 0) return
-  if (!confirm(`Send ${cat.count.toLocaleString()} photos to trash? (favorites kept)`)) return
+  const ok = await confirm({
+    title: `Move ${cat.count.toLocaleString()} photos to Trash?`,
+    message: 'Favorites are always kept. You can restore from Trash later.',
+    confirmText: 'Move to Trash',
+    danger: true,
+  })
+  if (!ok) return
   const { data } = await photosApi.runCleanup(filters)
   recordBatch(data)
   await loadSummary()
+  if (data.deleted) success(`Moved ${data.deleted.toLocaleString()} photos to Trash`)
 }
 
 async function cleanSelected() {
@@ -254,15 +277,23 @@ async function cleanSelected() {
     dark: picked.dark,
     overexposed: picked.overexposed,
     low_res: picked.low_res,
+    memes: picked.memes,
     max_quality: picked.low_quality ? threshold.value : null,
   }
   const n = summary.value.total_reclaimable.count
-  if (!confirm(`Send up to ${n.toLocaleString()} photos to trash? (favorites kept)`)) return
+  const ok = await confirm({
+    title: `Move up to ${n.toLocaleString()} photos to Trash?`,
+    message: 'Favorites are always kept. Everything is recoverable from Trash.',
+    confirmText: 'Move to Trash',
+    danger: true,
+  })
+  if (!ok) return
   cleaning.value = true
   try {
     const { data } = await photosApi.runCleanup(filters)
     recordBatch(data)
     await loadSummary()
+    if (data.deleted) success(`Moved ${data.deleted.toLocaleString()} photos to Trash`)
   } finally {
     cleaning.value = false
   }

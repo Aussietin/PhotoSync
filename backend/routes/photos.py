@@ -1,18 +1,20 @@
-import io
 import json
 import os
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 from sqlalchemy import select, func, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from config import settings
 from database import get_db
 from models.photo import Photo, DeletionLog
 from services.storage import save_upload
@@ -238,7 +240,12 @@ async def list_duplicates(db: AsyncSession = Depends(get_db)):
 
 @router.get("/trash")
 async def list_trash(db: AsyncSession = Depends(get_db)):
-    q = select(Photo).where(Photo.deleted_at.is_not(None)).order_by(Photo.deleted_at.desc())
+    q = (
+        select(Photo)
+        .where(Photo.deleted_at.is_not(None))
+        .options(selectinload(Photo.tags))
+        .order_by(Photo.deleted_at.desc())
+    )
     result = await db.execute(q)
     return {"photos": [_serialize(p) for p in result.scalars().all()]}
 
@@ -251,107 +258,40 @@ class DownloadZipIn(BaseModel):
 
 @router.post("/download-zip")
 async def download_zip(body: DownloadZipIn, db: AsyncSession = Depends(get_db)):
+    """Build a ZIP of the requested photos on disk and return it as a download.
+
+    Writes to a temp file (not memory) so arbitrarily large selections work.
+    No photo-count cap — the server-side streaming keepers export is the recommended
+    path for 20k+ photos, but this handles any manual selection cleanly.
+    """
     if not body.photo_ids:
         raise HTTPException(status_code=400, detail="No photo IDs provided")
-    if len(body.photo_ids) > 500:
-        raise HTTPException(status_code=400, detail="Maximum 500 photos per download")
 
     result = await db.execute(select(Photo).where(Photo.id.in_(body.photo_ids)))
     photos = result.scalars().all()
+    if not photos:
+        raise HTTPException(status_code=404, detail="No matching photos found")
 
-    def generate():
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for p in photos:
-                fp = Path(p.file_path)
-                if fp.exists():
-                    zf.write(fp, p.original_filename)
-        buf.seek(0)
-        yield from iter(lambda: buf.read(65536), b"")
+    tmp = tempfile.NamedTemporaryFile(prefix="photosync-download-", suffix=".zip", delete=False)
+    tmp.close()
+    seen: set[str] = set()
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in photos:
+            fp = Path(p.file_path)
+            if not fp.exists():
+                continue
+            arc = p.original_filename
+            if arc in seen:
+                arc = f"{p.id}_{p.original_filename}"
+            seen.add(arc)
+            zf.write(fp, arc)
 
-    return StreamingResponse(
-        generate(),
+    return FileResponse(
+        tmp.name,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=photosync-export.zip"},
+        filename=f"photosync-export-{datetime.now():%Y%m%d}.zip",
+        background=BackgroundTask(os.remove, tmp.name),
     )
-
-
-# ── Single photo ──────────────────────────────────────────────────────────────
-
-@router.get("/{photo_id}")
-async def get_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id, options=[selectinload(Photo.tags)])
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    return _serialize(photo)
-
-
-# ── Soft delete ───────────────────────────────────────────────────────────────
-
-@router.delete("/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.deleted_at = datetime.utcnow()
-    await db.commit()
-
-
-# ── Permanent delete ──────────────────────────────────────────────────────────
-
-@router.delete("/{photo_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
-async def permanent_delete(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    for path in (photo.file_path, photo.thumbnail_path):
-        if path:
-            try:
-                os.remove(path)
-            except FileNotFoundError:
-                pass
-    await db.delete(photo)
-    await db.commit()
-
-
-# ── Restore from trash ────────────────────────────────────────────────────────
-
-@router.post("/{photo_id}/restore")
-async def restore_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.deleted_at = None
-    await db.commit()
-    return {"id": photo.id, "restored": True}
-
-
-# ── Favorite toggle ───────────────────────────────────────────────────────────
-
-@router.post("/{photo_id}/favorite")
-async def toggle_favorite(photo_id: int, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.is_favorite = not photo.is_favorite
-    await db.commit()
-    return {"id": photo.id, "is_favorite": photo.is_favorite}
-
-
-# ── Notes / caption ───────────────────────────────────────────────────────────
-
-class NotesIn(BaseModel):
-    notes: str
-
-
-@router.patch("/{photo_id}/notes")
-async def update_notes(photo_id: int, body: NotesIn, db: AsyncSession = Depends(get_db)):
-    photo = await db.get(Photo, photo_id)
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    photo.notes = body.notes
-    await db.commit()
-    return {"id": photo.id, "notes": photo.notes}
 
 
 # ── Bulk operations ───────────────────────────────────────────────────────────
@@ -391,6 +331,20 @@ async def bulk_restore(body: BulkIn, db: AsyncSession = Depends(get_db)):
 
 # ── Mass filter-based cleanup ───────────────────────────────────────────────────
 
+def _meme_condition():
+    """Photos with no camera EXIF that aren't screenshots — likely received/downloaded.
+
+    iPhone originals always have a camera_make ("Apple"). Images forwarded via
+    WhatsApp, Telegram, Instagram, etc. have their EXIF stripped, leaving
+    camera_make NULL. Excluding already-detected screenshots avoids double-counting.
+    """
+    return (
+        Photo.camera_make.is_(None)
+        & Photo.camera_model.is_(None)
+        & (Photo.is_screenshot == False)  # noqa: E712
+    )
+
+
 def _cleanup_conditions(body: "CleanupFilterIn"):
     """Build the list of OR conditions for a cleanup selection.
 
@@ -408,6 +362,8 @@ def _cleanup_conditions(body: "CleanupFilterIn"):
         conditions.append(Photo.is_overexposed == True)  # noqa: E712
     if body.low_res:
         conditions.append(Photo.is_low_res == True)  # noqa: E712
+    if body.memes:
+        conditions.append(_meme_condition())
     if body.max_quality is not None:
         conditions.append(
             (Photo.quality_score <= body.max_quality) & Photo.quality_score.is_not(None)
@@ -421,6 +377,7 @@ class CleanupFilterIn(BaseModel):
     dark: bool = False
     overexposed: bool = False
     low_res: bool = False
+    memes: bool = False  # received/forwarded images with no camera EXIF
     max_quality: float | None = None  # trash photos with quality <= this
 
 
@@ -440,12 +397,14 @@ async def cleanup_summary(
         return {"count": row[0], "bytes": int(row[1])}
 
     low_q = (Photo.quality_score <= max_quality) & Photo.quality_score.is_not(None)
+    meme_cond = _meme_condition()
     screenshots = await _count_and_size(Photo.is_screenshot == True)  # noqa: E712
     duplicates = await _count_and_size(Photo.is_duplicate == True)  # noqa: E712
     low_quality = await _count_and_size(low_q)
     dark = await _count_and_size(Photo.is_dark == True)  # noqa: E712
     overexposed = await _count_and_size(Photo.is_overexposed == True)  # noqa: E712
     low_res = await _count_and_size(Photo.is_low_res == True)  # noqa: E712
+    memes = await _count_and_size(meme_cond)
     # Union (a photo may match more than one category — count it once)
     reclaimable = await _count_and_size(
         or_(
@@ -454,6 +413,7 @@ async def cleanup_summary(
             Photo.is_dark == True,  # noqa: E712
             Photo.is_overexposed == True,  # noqa: E712
             Photo.is_low_res == True,  # noqa: E712
+            meme_cond,
             low_q,
         )
     )
@@ -465,6 +425,7 @@ async def cleanup_summary(
         "dark": dark,
         "overexposed": overexposed,
         "low_res": low_res,
+        "memes": memes,
         "low_quality_threshold": max_quality,
         "total_reclaimable": reclaimable,
     }
@@ -491,6 +452,7 @@ async def run_cleanup(body: CleanupFilterIn, db: AsyncSession = Depends(get_db))
         "dark" if body.dark else "",
         "overexposed" if body.overexposed else "",
         "low_res" if body.low_res else "",
+        "memes" if body.memes else "",
         "low_quality" if body.max_quality is not None else "",
     ) if k) or "manual"
 
@@ -559,6 +521,11 @@ async def cleanup_history(db: AsyncSession = Depends(get_db)):
 @router.post("/undo-cleanup/{batch}")
 async def undo_cleanup(batch: str, db: AsyncSession = Depends(get_db)):
     """Restore every photo trashed in a given cleanup batch."""
+    log = (await db.execute(
+        select(DeletionLog).where(DeletionLog.batch == batch)
+    )).scalar_one_or_none()
+    if log is None:
+        raise HTTPException(status_code=404, detail="Batch not found")
     result = await db.execute(
         update(Photo)
         .where(Photo.deleted_batch == batch, Photo.deleted_at.is_not(None))
@@ -604,10 +571,15 @@ async def empty_trash(
 # ── Library analysis (rescan flags for existing photos) ─────────────────────────
 
 @router.post("/analyze", status_code=status.HTTP_202_ACCEPTED)
-async def analyze_library(recompute_quality: bool = Query(True)):
+async def analyze_library(
+    recompute_quality: bool = Query(True),
+    ai_tagging: bool = Query(True, description="Run local CLIP tagging + embeddings"),
+    reanalyze: bool = Query(False, description="Re-tag photos that already have AI tags"),
+):
     """Background one-shot analysis: screenshot flags, quality scores, exposure/
-    resolution classification, missing previews, near-duplicate clustering, and
-    burst grouping. Poll GET /api/jobs/{id}. Run once after a bulk import."""
+    resolution classification, missing previews, near-duplicate clustering,
+    burst grouping, and local CLIP tagging + embeddings for semantic search.
+    Poll GET /api/jobs/{id}. Run once after a bulk import."""
 
     async def runner(session: AsyncSession, job) -> dict:
         from services.screenshot_detector import detect_screenshot
@@ -615,15 +587,20 @@ async def analyze_library(recompute_quality: bool = Query(True)):
         from services.storage import _make_preview
         from services.deduplicator import rescan_duplicates
         from services.bursts import group_bursts
+        from services.ai_tagger import tag_photo
+        from services import embeddings
+        from sqlalchemy.orm import selectinload
         import uuid
 
         photos = (await session.execute(
             select(Photo).where(Photo.deleted_at.is_(None))
+            .options(selectinload(Photo.tags))
         )).scalars().all()
         job.total = len(photos)
         await session.commit()
 
-        screenshots_flagged = quality_updated = previews_made = 0
+        clip_available = ai_tagging and embeddings.is_available()
+        screenshots_flagged = quality_updated = previews_made = ai_tagged = 0
         for idx, photo in enumerate(photos):
             photo.is_screenshot = detect_screenshot(
                 width=photo.width, height=photo.height,
@@ -651,6 +628,16 @@ async def analyze_library(recompute_quality: bool = Query(True)):
                         photo.quality_score = score
                         quality_updated += 1
 
+            # Local CLIP tagging + embedding. Re-tag when forced, when the photo
+            # has no tags yet, or (model now present) when it lacks an embedding —
+            # so heuristic-only photos get upgraded once the model is installed.
+            if ai_tagging:
+                needs_ai = reanalyze or not photo.ai_tags or (
+                    clip_available and photo.clip_embedding is None
+                )
+                if needs_ai and await tag_photo(session, photo):
+                    ai_tagged += 1
+
             if (idx + 1) % 50 == 0 or idx + 1 == len(photos):
                 job.processed = idx + 1
                 await session.commit()
@@ -663,6 +650,8 @@ async def analyze_library(recompute_quality: bool = Query(True)):
             "screenshots": screenshots_flagged,
             "quality_recomputed": quality_updated,
             "previews_made": previews_made,
+            "ai_tagged": ai_tagged,
+            "clip_model_available": clip_available,
             "duplicates": dup_summary,
             "bursts": burst_summary,
         }
@@ -815,15 +804,104 @@ async def triage_queue(
     return {"queue": queue, "total": len(queue)}
 
 
+# ── Per-photo AI tagging ──────────────────────────────────────────────────────
+
+@router.post("/{photo_id}/tag")
+async def tag_single_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    """Run AI tagging on a single photo on demand. Returns the generated tags."""
+    from services.ai_tagger import tag_photo
+    from sqlalchemy.orm import selectinload as _sil
+
+    photo = await db.get(Photo, photo_id, options=[_sil(Photo.tags)])
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    tags = await tag_photo(db, photo)
+    return {"id": photo_id, "tags": tags, "description": photo.ai_description}
+
+
+# ── Single photo (kept last so specific-path routes take priority) ────────────
+
+@router.get("/{photo_id}")
+async def get_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id, options=[selectinload(Photo.tags)])
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return _serialize(photo)
+
+
+@router.delete("/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.deleted_at = datetime.utcnow()
+    await db.commit()
+
+
+@router.delete("/{photo_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+async def permanent_delete(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    for path in (photo.file_path, photo.thumbnail_path):
+        if path:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+    await db.delete(photo)
+    await db.commit()
+
+
+@router.post("/{photo_id}/restore")
+async def restore_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.deleted_at = None
+    await db.commit()
+    return {"id": photo.id, "restored": True}
+
+
+@router.post("/{photo_id}/favorite")
+async def toggle_favorite(photo_id: int, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.is_favorite = not photo.is_favorite
+    await db.commit()
+    return {"id": photo.id, "is_favorite": photo.is_favorite}
+
+
+class NotesIn(BaseModel):
+    notes: str
+
+
+@router.patch("/{photo_id}/notes")
+async def update_notes(photo_id: int, body: NotesIn, db: AsyncSession = Depends(get_db)):
+    photo = await db.get(Photo, photo_id)
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.notes = body.notes
+    await db.commit()
+    return {"id": photo.id, "notes": photo.notes}
+
+
 # ── Serialiser ────────────────────────────────────────────────────────────────
 
+def _tok() -> str:
+    """Query-param token suffix for static file URLs, empty when auth is off."""
+    return f"?token={settings.API_TOKEN}" if settings.API_TOKEN else ""
+
+
 def _serialize(p: Photo) -> dict:
+    tok = _tok()
     return {
         "id": p.id,
         "filename": p.original_filename,
-        "thumbnail_url": f"/thumbnails/{Path(p.thumbnail_path).name}" if p.thumbnail_path else None,
-        "preview_url": f"/previews/{Path(p.preview_path).name}" if p.preview_path else None,
-        "original_url": f"/uploads/{p.filename}",
+        "thumbnail_url": f"/thumbnails/{Path(p.thumbnail_path).name}{tok}" if p.thumbnail_path else None,
+        "preview_url": f"/previews/{Path(p.preview_path).name}{tok}" if p.preview_path else None,
+        "original_url": f"/uploads/{p.filename}{tok}",
         "width": p.width,
         "height": p.height,
         "taken_at": p.taken_at.isoformat() if p.taken_at else None,
@@ -831,8 +909,10 @@ def _serialize(p: Photo) -> dict:
         "gps": {"lat": p.gps_lat, "lon": p.gps_lon} if p.gps_lat else None,
         "tags": [{"id": t.id, "name": t.name, "source": t.source} for t in (p.tags or [])],
         "ai_tags": json.loads(p.ai_tags) if p.ai_tags else [],
+        "ai_description": p.ai_description,
         "is_duplicate": p.is_duplicate,
         "is_screenshot": p.is_screenshot,
+        "is_meme": not p.camera_make and not p.camera_model and not p.is_screenshot,
         "is_dark": p.is_dark,
         "is_overexposed": p.is_overexposed,
         "is_low_res": p.is_low_res,

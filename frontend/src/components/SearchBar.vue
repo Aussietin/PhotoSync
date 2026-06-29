@@ -5,7 +5,7 @@
       :value="modelValue"
       type="search"
       :placeholder="placeholder"
-      class="w-full bg-gray-800 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500 transition-colors"
+      class="input pl-9"
       @input="$emit('update:modelValue', $event.target.value)"
       @keydown.enter="$emit('search')"
     />
