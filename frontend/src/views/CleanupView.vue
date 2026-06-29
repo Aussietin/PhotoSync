@@ -230,7 +230,7 @@ async function analyze() {
   analyzing.value = true
   analyzeResult.value = null
   try {
-    const { data } = await photosApi.analyzeLibrary(true)
+    const { data } = await photosApi.analyzeLibrary()
     await track(data.job_id, {
       interval: 1500,
       onDone: async (j) => { analyzeResult.value = j.result; analyzing.value = false; await loadSummary() },

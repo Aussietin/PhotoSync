@@ -9,11 +9,14 @@ Covers:
 """
 import json
 from datetime import datetime, date
+from unittest.mock import patch
 
+import numpy as np
 import pytest
 from sqlalchemy import select
 
 from models.photo import Photo, Tag
+from services import embeddings
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -166,3 +169,90 @@ async def test_search_pagination(client, db_session):
     resp2 = await client.get("/api/search?per_page=2&page=2")
     assert resp2.status_code == 200
     assert len(resp2.json()["photos"]) == 2
+
+
+# ── Semantic search (local CLIP, mocked encoder) ────────────────────────────────
+
+def _emb(*vals) -> bytes:
+    return embeddings.to_blob(np.array(vals, dtype=np.float32))
+
+
+async def test_semantic_search_ranks_by_similarity(client, db_session):
+    """Photos are returned best-match-first by cosine similarity to the query."""
+    near = _photo(file_path="/fake/sem/near.jpg", original_filename="near.jpg",
+                  clip_embedding=_emb(1.0, 0.0))
+    mid = _photo(file_path="/fake/sem/mid.jpg", original_filename="mid.jpg",
+                 clip_embedding=_emb(0.7, 0.7))
+    far = _photo(file_path="/fake/sem/far.jpg", original_filename="far.jpg",
+                 clip_embedding=_emb(0.0, 1.0))
+    await _seed(db_session, [near, mid, far])
+
+    # Query vector points along the first axis → "near" is the best match.
+    with patch("services.embeddings.embed_text",
+               return_value=np.array([1.0, 0.0], dtype=np.float32)):
+        resp = await client.get("/api/search/semantic?q=anything&min_score=0.0")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    names = [p["filename"] for p in body["photos"]]
+    assert names == ["near.jpg", "mid.jpg", "far.jpg"]
+    assert body["photos"][0]["score"] >= body["photos"][1]["score"]
+
+
+async def test_semantic_search_min_score_filters(client, db_session):
+    """Results below min_score are excluded."""
+    near = _photo(file_path="/fake/sem/n.jpg", original_filename="n.jpg",
+                  clip_embedding=_emb(1.0, 0.0))
+    far = _photo(file_path="/fake/sem/f.jpg", original_filename="f.jpg",
+                 clip_embedding=_emb(0.0, 1.0))
+    await _seed(db_session, [near, far])
+
+    with patch("services.embeddings.embed_text",
+               return_value=np.array([1.0, 0.0], dtype=np.float32)):
+        resp = await client.get("/api/search/semantic?q=x&min_score=0.5")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 1
+    assert body["photos"][0]["filename"] == "n.jpg"
+
+
+async def test_semantic_search_excludes_deleted_and_duplicates(client, db_session):
+    live = _photo(file_path="/fake/sem/live.jpg", original_filename="live.jpg",
+                  clip_embedding=_emb(1.0, 0.0))
+    trashed = _photo(file_path="/fake/sem/del.jpg", original_filename="del.jpg",
+                     clip_embedding=_emb(1.0, 0.0), deleted_at=datetime.utcnow())
+    dupe = _photo(file_path="/fake/sem/dup.jpg", original_filename="dup.jpg",
+                  clip_embedding=_emb(1.0, 0.0), is_duplicate=True)
+    await _seed(db_session, [live, trashed, dupe])
+
+    with patch("services.embeddings.embed_text",
+               return_value=np.array([1.0, 0.0], dtype=np.float32)):
+        resp = await client.get("/api/search/semantic?q=x&min_score=0.0")
+
+    body = resp.json()
+    assert [p["filename"] for p in body["photos"]] == ["live.jpg"]
+
+
+async def test_semantic_search_no_indexed_photos(client, db_session):
+    """With the model available but nothing indexed, returns an empty hinted result."""
+    await _seed(db_session, [
+        _photo(file_path="/fake/sem/u.jpg", original_filename="u.jpg"),  # no embedding
+    ])
+    with patch("services.embeddings.embed_text",
+               return_value=np.array([1.0, 0.0], dtype=np.float32)):
+        resp = await client.get("/api/search/semantic?q=x")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 0
+    assert "hint" in body
+
+
+async def test_semantic_search_model_unavailable(client, db_session):
+    """When the CLIP model isn't installed, returns 503 with install guidance."""
+    with patch("services.embeddings.embed_text", return_value=None):
+        resp = await client.get("/api/search/semantic?q=x")
+
+    assert resp.status_code == 503
+    assert "requirements-ai.txt" in resp.json()["detail"]

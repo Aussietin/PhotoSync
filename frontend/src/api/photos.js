@@ -73,8 +73,10 @@ export const photosApi = {
     }),
 
   // Background jobs (import / analyze / rescan return { job_id })
-  analyzeLibrary: (recompute_quality = true) =>
-    api.post('/photos/analyze', null, { params: { recompute_quality } }),
+  analyzeLibrary: (params = {}) =>
+    api.post('/photos/analyze', null, {
+      params: { recompute_quality: true, ai_tagging: true, ...params },
+    }),
 }
 
 export const jobsApi = {
@@ -105,6 +107,8 @@ export const tagsApi = {
 
 export const searchApi = {
   search: (params) => api.get('/search', { params }),
+  // Semantic (meaning-based) search via local CLIP embeddings.
+  semantic: (q, params = {}) => api.get('/search/semantic', { params: { q, ...params } }),
 }
 
 export const albumsApi = {

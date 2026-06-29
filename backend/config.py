@@ -25,10 +25,15 @@ class Settings(BaseSettings):
     # `X-API-Token: <token>`. Empty = open (default, for localhost use).
     API_TOKEN: str = ""
 
-    # Optional OpenAI API key. When set, POST /photos/analyze uses GPT-4o-mini
-    # Vision to generate richer tags and a description for each photo.
-    # If empty, falls back to the built-in color-heuristic tagger.
-    OPENAI_API_KEY: str = ""
+    # ── Local AI (CLIP) ──────────────────────────────────────────────────────
+    # Semantic search + zero-shot tagging run fully on-device via a local CLIP
+    # model — no data ever leaves the machine, no API key, no cost. The model is
+    # an OPTIONAL dependency (pip install -r requirements-ai.txt). If it isn't
+    # installed the app still runs and tagging falls back to the colour heuristic.
+    CLIP_MODEL: str = "clip-ViT-B-32"  # sentence-transformers model id (~350MB)
+    # A zero-shot tag is kept when image↔label cosine similarity exceeds this.
+    AI_TAG_THRESHOLD: float = 0.22
+    AI_MAX_TAGS: int = 8
 
     class Config:
         env_file = ".env"

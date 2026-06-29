@@ -571,10 +571,15 @@ async def empty_trash(
 # ── Library analysis (rescan flags for existing photos) ─────────────────────────
 
 @router.post("/analyze", status_code=status.HTTP_202_ACCEPTED)
-async def analyze_library(recompute_quality: bool = Query(True)):
+async def analyze_library(
+    recompute_quality: bool = Query(True),
+    ai_tagging: bool = Query(True, description="Run local CLIP tagging + embeddings"),
+    reanalyze: bool = Query(False, description="Re-tag photos that already have AI tags"),
+):
     """Background one-shot analysis: screenshot flags, quality scores, exposure/
-    resolution classification, missing previews, near-duplicate clustering, and
-    burst grouping. Poll GET /api/jobs/{id}. Run once after a bulk import."""
+    resolution classification, missing previews, near-duplicate clustering,
+    burst grouping, and local CLIP tagging + embeddings for semantic search.
+    Poll GET /api/jobs/{id}. Run once after a bulk import."""
 
     async def runner(session: AsyncSession, job) -> dict:
         from services.screenshot_detector import detect_screenshot
@@ -583,6 +588,7 @@ async def analyze_library(recompute_quality: bool = Query(True)):
         from services.deduplicator import rescan_duplicates
         from services.bursts import group_bursts
         from services.ai_tagger import tag_photo
+        from services import embeddings
         from sqlalchemy.orm import selectinload
         import uuid
 
@@ -593,6 +599,7 @@ async def analyze_library(recompute_quality: bool = Query(True)):
         job.total = len(photos)
         await session.commit()
 
+        clip_available = ai_tagging and embeddings.is_available()
         screenshots_flagged = quality_updated = previews_made = ai_tagged = 0
         for idx, photo in enumerate(photos):
             photo.is_screenshot = detect_screenshot(
@@ -621,11 +628,14 @@ async def analyze_library(recompute_quality: bool = Query(True)):
                         photo.quality_score = score
                         quality_updated += 1
 
-            # AI tagging — runs for every photo; uses OpenAI when key is set,
-            # heuristic colour tags otherwise.  Skip photos already tagged.
-            if not photo.ai_tags:
-                result_tags = await tag_photo(session, photo)
-                if result_tags:
+            # Local CLIP tagging + embedding. Re-tag when forced, when the photo
+            # has no tags yet, or (model now present) when it lacks an embedding —
+            # so heuristic-only photos get upgraded once the model is installed.
+            if ai_tagging:
+                needs_ai = reanalyze or not photo.ai_tags or (
+                    clip_available and photo.clip_embedding is None
+                )
+                if needs_ai and await tag_photo(session, photo):
                     ai_tagged += 1
 
             if (idx + 1) % 50 == 0 or idx + 1 == len(photos):
@@ -641,6 +651,7 @@ async def analyze_library(recompute_quality: bool = Query(True)):
             "quality_recomputed": quality_updated,
             "previews_made": previews_made,
             "ai_tagged": ai_tagged,
+            "clip_model_available": clip_available,
             "duplicates": dup_summary,
             "bursts": burst_summary,
         }
@@ -898,6 +909,7 @@ def _serialize(p: Photo) -> dict:
         "gps": {"lat": p.gps_lat, "lon": p.gps_lon} if p.gps_lat else None,
         "tags": [{"id": t.id, "name": t.name, "source": t.source} for t in (p.tags or [])],
         "ai_tags": json.loads(p.ai_tags) if p.ai_tags else [],
+        "ai_description": p.ai_description,
         "is_duplicate": p.is_duplicate,
         "is_screenshot": p.is_screenshot,
         "is_meme": not p.camera_make and not p.camera_model and not p.is_screenshot,

@@ -1,0 +1,18 @@
+# Optional local-AI dependencies for semantic search + zero-shot tagging.
+#
+# Everything here runs ON YOUR MACHINE — no API, no cost, nothing uploaded.
+# Install on top of requirements.txt to enable AI features:
+#
+#     pip install -r requirements.txt
+#     pip install -r requirements-ai.txt
+#
+# Then index your library:  POST /api/photos/analyze
+#
+# The first analyze run downloads the CLIP weights (~350MB) once from
+# Hugging Face; after that it is fully offline.
+#
+# torch is the CPU build — fine for an Intel/AMD laptop with no GPU. If you have
+# an NVIDIA GPU, install the CUDA build of torch instead for a big speed-up
+# (see https://pytorch.org/get-started/locally/).
+sentence-transformers==2.7.0
+torch==2.2.2

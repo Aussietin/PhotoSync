@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, ForeignKey, Table, Column
+from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, ForeignKey, Table, Column, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -45,6 +45,8 @@ class Photo(Base):
     # AI
     ai_tags: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
     ai_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # CLIP image embedding (float32 vector, raw bytes) for local semantic search.
+    clip_embedding: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
     # Quality score (0–1): higher = sharper + better exposed
     quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)

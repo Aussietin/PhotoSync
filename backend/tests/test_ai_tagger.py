@@ -1,17 +1,18 @@
 """
-Unit tests for services/ai_tagger.py.
+Unit tests for services/ai_tagger.py and services/embeddings.py.
 
-The OpenAI backend is tested with a mocked httpx response so no real API
-call is made and no key is required. Heuristic and error-fallback paths are
-tested with a real (tiny) in-memory JPEG.
+The local CLIP model is never loaded here — its image/text encoders are mocked,
+so no torch/sentence-transformers install or model download is needed. This
+covers both the CLIP path (mocked vectors) and the colour-heuristic fallback
+that runs when the model is unavailable.
 """
 import json
-import io
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 
-import pytest
+import numpy as np
 import pytest_asyncio
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 import sys
@@ -41,10 +42,7 @@ async def session():
 
 @pytest_asyncio.fixture
 async def tiny_jpeg(tmp_path) -> Path:
-    """Write a tiny 8×8 bright-warm JPEG to tmp_path and return its path.
-
-    Color (240, 180, 180): r > g ≈ b → "warm tones"; mean ≈ 200 > 180 → "bright".
-    """
+    """A tiny bright-warm JPEG: r > g ≈ b → 'warm tones'; mean ≈ 200 → 'bright'."""
     from PIL import Image
     img = Image.new("RGB", (8, 8), color=(240, 180, 180))
     p = tmp_path / "test.jpg"
@@ -68,38 +66,37 @@ async def photo_row(session, tiny_jpeg) -> Photo:
     return p
 
 
-# ── Heuristic tagger ──────────────────────────────────────────────────────────
+# ── Heuristic fallback (CLIP model unavailable) ─────────────────────────────────
 
 async def test_heuristic_tags_warm_bright(session, photo_row):
-    """A bright red image should get warm tones + bright tags."""
+    """With no CLIP model, a bright warm image gets warm tones + bright tags."""
     from services.ai_tagger import tag_photo
 
-    with patch("config.settings.OPENAI_API_KEY", ""):
+    with patch("services.embeddings.embed_image", return_value=None):
         tags = await tag_photo(session, photo_row)
 
     assert "warm tones" in tags
     assert "bright" in tags
+    assert photo_row.clip_embedding is None  # no embedding without the model
 
 
 async def test_heuristic_tags_persisted_to_db(session, photo_row):
-    """Tags written by heuristic path are stored on the Photo row and as Tag rows."""
+    """Heuristic tags are stored on the Photo row and as Tag rows."""
     from services.ai_tagger import tag_photo
-    from sqlalchemy import select
 
-    with patch("config.settings.OPENAI_API_KEY", ""):
+    with patch("services.embeddings.embed_image", return_value=None):
         tags = await tag_photo(session, photo_row)
 
-    assert tags  # heuristic always returns at least one tag
+    assert tags
     assert photo_row.ai_tags == json.dumps(tags)
-
     db_tags = (await session.execute(
         select(Tag).where(Tag.photo_id == photo_row.id, Tag.source == "ai")
     )).scalars().all()
     assert {t.name for t in db_tags} == set(tags)
 
 
-async def test_heuristic_skips_missing_file(session):
-    """A photo whose file no longer exists returns an empty list without error."""
+async def test_skips_missing_file(session):
+    """A photo whose file no longer exists returns [] without error."""
     from services.ai_tagger import tag_photo
 
     p = Photo(
@@ -113,105 +110,101 @@ async def test_heuristic_skips_missing_file(session):
     await session.commit()
     await session.refresh(p)
 
-    with patch("config.settings.OPENAI_API_KEY", ""):
-        tags = await tag_photo(session, p)
-
+    tags = await tag_photo(session, p)
     assert tags == []
 
 
-# ── OpenAI backend ────────────────────────────────────────────────────────────
+# ── CLIP path (mocked encoder) ──────────────────────────────────────────────────
 
-def _mock_openai_response(tags: list[str], description: str):
-    """Build a fake httpx Response-like object for the OpenAI chat completions endpoint."""
-    payload = {
-        "choices": [
-            {
-                "message": {
-                    "content": json.dumps({"tags": tags, "description": description})
-                }
-            }
-        ]
-    }
-    mock_resp = MagicMock()
-    mock_resp.raise_for_status = MagicMock()
-    mock_resp.json = MagicMock(return_value=payload)
-    return mock_resp
-
-
-async def test_openai_tags_and_description(session, photo_row):
-    """When OPENAI_API_KEY is set the OpenAI path is used and description is stored."""
+async def test_clip_tags_and_embedding_persisted(session, photo_row):
+    """When the model is available, tag_photo stores zero-shot tags + embedding."""
     from services.ai_tagger import tag_photo
 
-    expected_tags = ["sunset", "beach", "golden hour", "warm colours", "seascape"]
-    expected_desc = "A warm sunset over a calm beach."
-
-    mock_resp = _mock_openai_response(expected_tags, expected_desc)
+    fake_vec = np.ones(512, dtype=np.float32)
+    expected = ["beach", "sunset", "dog"]
 
     with (
-        patch("config.settings.OPENAI_API_KEY", "sk-test"),
-        patch("httpx.AsyncClient") as MockClient,
+        patch("services.embeddings.embed_image", return_value=fake_vec),
+        patch("services.embeddings.zero_shot_tags", return_value=expected),
     ):
-        instance = AsyncMock()
-        instance.__aenter__ = AsyncMock(return_value=instance)
-        instance.__aexit__ = AsyncMock(return_value=False)
-        instance.post = AsyncMock(return_value=mock_resp)
-        MockClient.return_value = instance
-
         tags = await tag_photo(session, photo_row)
 
-    assert tags == expected_tags
-    assert photo_row.ai_tags == json.dumps(expected_tags)
-    assert photo_row.ai_description == expected_desc
+    assert tags == expected
+    assert photo_row.ai_tags == json.dumps(expected)
+    # Embedding stored and round-trips back to the same vector.
+    assert photo_row.clip_embedding is not None
+    from services import embeddings
+    np.testing.assert_array_equal(embeddings.from_blob(photo_row.clip_embedding), fake_vec)
 
 
-async def test_openai_fallback_on_error(session, photo_row):
-    """If the OpenAI call raises an exception, the heuristic is NOT run either —
-    tag_photo returns [] gracefully (the caller decides what to do next)."""
+async def test_clip_replaces_existing_ai_tags(session, photo_row):
+    """Re-tagging removes old AI Tag rows and writes fresh ones."""
     from services.ai_tagger import tag_photo
 
-    with (
-        patch("config.settings.OPENAI_API_KEY", "sk-test"),
-        patch("httpx.AsyncClient") as MockClient,
-    ):
-        instance = AsyncMock()
-        instance.__aenter__ = AsyncMock(return_value=instance)
-        instance.__aexit__ = AsyncMock(return_value=False)
-        instance.post = AsyncMock(side_effect=Exception("network error"))
-        MockClient.return_value = instance
-
-        tags = await tag_photo(session, photo_row)
-
-    # OpenAI failed → _tag_with_openai returns ([], None) → tag_photo returns []
-    assert tags == []
-
-
-async def test_openai_replaces_existing_ai_tags(session, photo_row):
-    """Re-tagging a photo removes old AI Tag rows and sets fresh ones."""
-    from services.ai_tagger import tag_photo
-    from sqlalchemy import select
-
-    # Seed an old AI tag directly.
     session.add(Tag(photo_id=photo_row.id, name="old tag", source="ai", confidence=0.5))
     await session.commit()
 
-    first_tags = ["sunset", "warm colours"]
-    mock_resp = _mock_openai_response(first_tags, "New description.")
+    fake_vec = np.ones(512, dtype=np.float32)
+    new_tags = ["food", "indoors"]
 
     with (
-        patch("config.settings.OPENAI_API_KEY", "sk-test"),
-        patch("httpx.AsyncClient") as MockClient,
+        patch("services.embeddings.embed_image", return_value=fake_vec),
+        patch("services.embeddings.zero_shot_tags", return_value=new_tags),
     ):
-        instance = AsyncMock()
-        instance.__aenter__ = AsyncMock(return_value=instance)
-        instance.__aexit__ = AsyncMock(return_value=False)
-        instance.post = AsyncMock(return_value=mock_resp)
-        MockClient.return_value = instance
-
-        tags = await tag_photo(session, photo_row)
+        await tag_photo(session, photo_row)
 
     db_tags = (await session.execute(
         select(Tag).where(Tag.photo_id == photo_row.id, Tag.source == "ai")
     )).scalars().all()
-    tag_names = {t.name for t in db_tags}
-    assert "old tag" not in tag_names
-    assert tag_names == set(first_tags)
+    names = {t.name for t in db_tags}
+    assert "old tag" not in names
+    assert names == set(new_tags)
+
+
+# ── Embedding helpers ───────────────────────────────────────────────────────────
+
+def test_blob_roundtrip():
+    from services import embeddings
+    vec = np.array([0.1, -0.2, 0.3, 0.4], dtype=np.float32)
+    out = embeddings.from_blob(embeddings.to_blob(vec))
+    np.testing.assert_array_equal(out, vec)
+
+
+def test_rank_by_similarity_orders_by_cosine():
+    """rank_by_similarity returns dot products aligned with the input order."""
+    from services import embeddings
+
+    query = np.array([1.0, 0.0], dtype=np.float32)
+    blobs = [
+        embeddings.to_blob(np.array([1.0, 0.0], dtype=np.float32)),   # identical -> 1.0
+        embeddings.to_blob(np.array([0.0, 1.0], dtype=np.float32)),   # orthogonal -> 0.0
+        embeddings.to_blob(np.array([-1.0, 0.0], dtype=np.float32)),  # opposite -> -1.0
+    ]
+    scores = embeddings.rank_by_similarity(query, blobs)
+    assert list(np.round(scores, 3)) == [1.0, 0.0, -1.0]
+
+
+def test_rank_by_similarity_empty():
+    from services import embeddings
+    scores = embeddings.rank_by_similarity(np.ones(4, dtype=np.float32), [])
+    assert len(scores) == 0
+
+
+def test_zero_shot_tags_thresholds_and_orders():
+    """zero_shot_tags keeps labels above threshold, best-first, capped at max."""
+    from services import embeddings
+
+    labels = ["a dog", "a cat", "a beach"]
+    # label matrix: dog highly aligned, cat moderate, beach negative
+    label_mat = np.array([
+        [1.0, 0.0],   # dog
+        [0.5, 0.0],   # cat
+        [-1.0, 0.0],  # beach
+    ], dtype=np.float32)
+    img_vec = np.array([1.0, 0.0], dtype=np.float32)
+
+    with patch("services.embeddings._label_embeddings",
+               return_value=(["dog", "cat", "beach"], label_mat)):
+        tags = embeddings.zero_shot_tags(img_vec, labels=labels, threshold=0.3, max_tags=5)
+
+    assert tags == ["dog", "cat"]  # beach below threshold, ordered by score
