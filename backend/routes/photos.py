@@ -1,14 +1,15 @@
-import io
 import json
 import os
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 from sqlalchemy import select, func, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -257,28 +258,39 @@ class DownloadZipIn(BaseModel):
 
 @router.post("/download-zip")
 async def download_zip(body: DownloadZipIn, db: AsyncSession = Depends(get_db)):
+    """Build a ZIP of the requested photos on disk and return it as a download.
+
+    Writes to a temp file (not memory) so arbitrarily large selections work.
+    No photo-count cap — the server-side streaming keepers export is the recommended
+    path for 20k+ photos, but this handles any manual selection cleanly.
+    """
     if not body.photo_ids:
         raise HTTPException(status_code=400, detail="No photo IDs provided")
-    if len(body.photo_ids) > 500:
-        raise HTTPException(status_code=400, detail="Maximum 500 photos per download")
 
     result = await db.execute(select(Photo).where(Photo.id.in_(body.photo_ids)))
     photos = result.scalars().all()
+    if not photos:
+        raise HTTPException(status_code=404, detail="No matching photos found")
 
-    def generate():
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for p in photos:
-                fp = Path(p.file_path)
-                if fp.exists():
-                    zf.write(fp, p.original_filename)
-        buf.seek(0)
-        yield from iter(lambda: buf.read(65536), b"")
+    tmp = tempfile.NamedTemporaryFile(prefix="photosync-download-", suffix=".zip", delete=False)
+    tmp.close()
+    seen: set[str] = set()
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in photos:
+            fp = Path(p.file_path)
+            if not fp.exists():
+                continue
+            arc = p.original_filename
+            if arc in seen:
+                arc = f"{p.id}_{p.original_filename}"
+            seen.add(arc)
+            zf.write(fp, arc)
 
-    return StreamingResponse(
-        generate(),
+    return FileResponse(
+        tmp.name,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=photosync-export.zip"},
+        filename=f"photosync-export-{datetime.now():%Y%m%d}.zip",
+        background=BackgroundTask(os.remove, tmp.name),
     )
 
 
@@ -570,15 +582,18 @@ async def analyze_library(recompute_quality: bool = Query(True)):
         from services.storage import _make_preview
         from services.deduplicator import rescan_duplicates
         from services.bursts import group_bursts
+        from services.ai_tagger import tag_photo
+        from sqlalchemy.orm import selectinload
         import uuid
 
         photos = (await session.execute(
             select(Photo).where(Photo.deleted_at.is_(None))
+            .options(selectinload(Photo.tags))
         )).scalars().all()
         job.total = len(photos)
         await session.commit()
 
-        screenshots_flagged = quality_updated = previews_made = 0
+        screenshots_flagged = quality_updated = previews_made = ai_tagged = 0
         for idx, photo in enumerate(photos):
             photo.is_screenshot = detect_screenshot(
                 width=photo.width, height=photo.height,
@@ -606,6 +621,13 @@ async def analyze_library(recompute_quality: bool = Query(True)):
                         photo.quality_score = score
                         quality_updated += 1
 
+            # AI tagging — runs for every photo; uses OpenAI when key is set,
+            # heuristic colour tags otherwise.  Skip photos already tagged.
+            if not photo.ai_tags:
+                result_tags = await tag_photo(session, photo)
+                if result_tags:
+                    ai_tagged += 1
+
             if (idx + 1) % 50 == 0 or idx + 1 == len(photos):
                 job.processed = idx + 1
                 await session.commit()
@@ -618,6 +640,7 @@ async def analyze_library(recompute_quality: bool = Query(True)):
             "screenshots": screenshots_flagged,
             "quality_recomputed": quality_updated,
             "previews_made": previews_made,
+            "ai_tagged": ai_tagged,
             "duplicates": dup_summary,
             "bursts": burst_summary,
         }
@@ -768,6 +791,21 @@ async def triage_queue(
                 queue.append({**_serialize(p), "triage_reason": "low_quality"})
 
     return {"queue": queue, "total": len(queue)}
+
+
+# ── Per-photo AI tagging ──────────────────────────────────────────────────────
+
+@router.post("/{photo_id}/tag")
+async def tag_single_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
+    """Run AI tagging on a single photo on demand. Returns the generated tags."""
+    from services.ai_tagger import tag_photo
+    from sqlalchemy.orm import selectinload as _sil
+
+    photo = await db.get(Photo, photo_id, options=[_sil(Photo.tags)])
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    tags = await tag_photo(db, photo)
+    return {"id": photo_id, "tags": tags, "description": photo.ai_description}
 
 
 # ── Single photo (kept last so specific-path routes take priority) ────────────

@@ -223,3 +223,75 @@ async def test_update_notes(client, db_session):
 
     await db_session.refresh(p)
     assert p.notes == "keeper!"
+
+
+# ── Download ZIP ───────────────────────────────────────────────────────────────
+
+async def test_download_zip_empty_ids_returns_400(client):
+    resp = await client.post("/api/photos/download-zip", json={"photo_ids": []})
+    assert resp.status_code == 400
+
+
+async def test_download_zip_unknown_ids_returns_404(client):
+    resp = await client.post("/api/photos/download-zip", json={"photo_ids": [9999, 8888]})
+    assert resp.status_code == 404
+
+
+async def test_download_zip_disk_based(client, db_session, tmp_path):
+    """download-zip writes to a temp file, returns application/zip, no photo cap."""
+    import zipfile
+    import io
+
+    # Create real image files on disk so zipfile.write succeeds.
+    files = []
+    photos = []
+    for i in range(3):
+        fp = tmp_path / f"real_{i}.jpg"
+        fp.write_bytes(b"FAKEJPEG" * 10)
+        p = _photo(
+            file_path=str(fp),
+            filename=f"real_{i}.jpg",
+            original_filename=f"photo_{i}.jpg",
+        )
+        photos.append(p)
+        files.append(fp)
+    await _seed(db_session, photos)
+
+    resp = await client.post(
+        "/api/photos/download-zip",
+        json={"photo_ids": [p.id for p in photos]},
+    )
+    assert resp.status_code == 200
+    assert "application/zip" in resp.headers["content-type"]
+
+    # Verify the archive contains all three files.
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+    names = zf.namelist()
+    assert len(names) == 3
+    assert set(names) == {"photo_0.jpg", "photo_1.jpg", "photo_2.jpg"}
+
+
+async def test_download_zip_deduplicates_filenames(client, db_session, tmp_path):
+    """Two photos with the same original_filename get distinct archive names."""
+    import zipfile
+    import io
+
+    fp1 = tmp_path / "a.jpg"
+    fp2 = tmp_path / "b.jpg"
+    fp1.write_bytes(b"AAA")
+    fp2.write_bytes(b"BBB")
+
+    p1 = _photo(file_path=str(fp1), filename="a.jpg", original_filename="img.jpg")
+    p2 = _photo(file_path=str(fp2), filename="b.jpg", original_filename="img.jpg")
+    await _seed(db_session, [p1, p2])
+
+    resp = await client.post(
+        "/api/photos/download-zip",
+        json={"photo_ids": [p1.id, p2.id]},
+    )
+    assert resp.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+    names = zf.namelist()
+    # Both entries present, no collision.
+    assert len(names) == 2
+    assert len(set(names)) == 2

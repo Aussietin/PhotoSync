@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # `X-API-Token: <token>`. Empty = open (default, for localhost use).
     API_TOKEN: str = ""
 
+    # Optional OpenAI API key. When set, POST /photos/analyze uses GPT-4o-mini
+    # Vision to generate richer tags and a description for each photo.
+    # If empty, falls back to the built-in color-heuristic tagger.
+    OPENAI_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
 

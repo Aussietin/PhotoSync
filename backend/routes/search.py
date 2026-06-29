@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from database import get_db
 from models.photo import Photo, Tag
@@ -27,7 +28,16 @@ async def search_photos(
     if q:
         term = f"%{q.lower()}%"
         tag_subq = select(Tag.photo_id).where(Tag.name.ilike(term))
-        stmt = stmt.where(or_(Photo.original_filename.ilike(term), Photo.id.in_(tag_subq)))
+        stmt = stmt.where(
+            or_(
+                Photo.original_filename.ilike(term),
+                Photo.id.in_(tag_subq),
+                # ai_description is a plain text column; ai_tags is stored as a
+                # JSON array string so LIKE catches individual tag words too.
+                Photo.ai_description.ilike(term),
+                Photo.ai_tags.ilike(term),
+            )
+        )
 
     if tag:
         tag_subq = select(Tag.photo_id).where(Tag.name == tag.lower().strip())
@@ -44,7 +54,12 @@ async def search_photos(
         stmt = stmt.where(or_(Photo.camera_make.ilike(term), Photo.camera_model.ilike(term)))
 
     offset = (page - 1) * per_page
-    stmt = stmt.order_by(Photo.taken_at.desc().nullslast()).offset(offset).limit(per_page)
+    stmt = (
+        stmt.options(selectinload(Photo.tags))
+        .order_by(Photo.taken_at.desc().nullslast())
+        .offset(offset)
+        .limit(per_page)
+    )
 
     result = await db.execute(stmt)
     photos = result.scalars().all()
