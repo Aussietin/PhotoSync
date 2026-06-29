@@ -13,11 +13,23 @@ from routes import photos, tags, search, albums, stats, jobs, export
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
     await init_db()
     for d in (settings.UPLOAD_DIR, settings.THUMBNAIL_DIR, settings.PREVIEW_DIR):
         os.makedirs(d, exist_ok=True)
     from services.jobs import reap_stale_jobs
     await reap_stale_jobs()  # clear jobs left 'running' by a previous crash
+
+    if not settings.API_TOKEN:
+        logging.getLogger("photosync").warning(
+            "\n"
+            "  ╔══════════════════════════════════════════════════════╗\n"
+            "  ║  WARNING: API_TOKEN is not set.                      ║\n"
+            "  ║  All routes are open — anyone who can reach this     ║\n"
+            "  ║  server can view and delete your photos.             ║\n"
+            "  ║  Add API_TOKEN=<secret> to backend/.env              ║\n"
+            "  ╚══════════════════════════════════════════════════════╝"
+        )
     yield
 
 
@@ -32,13 +44,28 @@ app.add_middleware(
 )
 
 
+_PROTECTED_PREFIXES = ("/api/", "/uploads/", "/thumbnails/", "/previews/")
+_PUBLIC_PATHS = {"/api/health"}
+
+
 @app.middleware("http")
-async def api_token_guard(request: Request, call_next):
-    """If API_TOKEN is configured, require it on /api routes (health excepted)."""
-    if settings.API_TOKEN and request.url.path.startswith("/api"):
-        if request.url.path != "/api/health":
-            if request.headers.get("X-API-Token") != settings.API_TOKEN:
-                return JSONResponse({"detail": "Invalid or missing API token"}, status_code=401)
+async def auth_guard(request: Request, call_next):
+    """When API_TOKEN is set, require it on all API and static-file routes.
+
+    Accepts the token via X-API-Token header OR ?token= query param.
+    Query param support is required so <img src> tags can include auth.
+    """
+    if not settings.API_TOKEN:
+        return await call_next(request)
+
+    path = request.url.path
+    if path in _PUBLIC_PATHS or not any(path.startswith(p) for p in _PROTECTED_PREFIXES):
+        return await call_next(request)
+
+    token = request.headers.get("X-API-Token") or request.query_params.get("token")
+    if token != settings.API_TOKEN:
+        return JSONResponse({"detail": "Invalid or missing API token"}, status_code=401)
+
     return await call_next(request)
 
 
@@ -77,4 +104,6 @@ async def server_info():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    # Default to localhost-only. Set HOST=0.0.0.0 (with API_TOKEN) to allow phone access.
+    host = os.getenv("HOST", "127.0.0.1")
+    uvicorn.run("app:app", host=host, port=8000, reload=True)

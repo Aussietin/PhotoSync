@@ -13,6 +13,7 @@ from sqlalchemy import select, func, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from config import settings
 from database import get_db
 from models.photo import Photo, DeletionLog
 from services.storage import save_upload
@@ -839,13 +840,19 @@ async def update_notes(photo_id: int, body: NotesIn, db: AsyncSession = Depends(
 
 # ── Serialiser ────────────────────────────────────────────────────────────────
 
+def _tok() -> str:
+    """Query-param token suffix for static file URLs, empty when auth is off."""
+    return f"?token={settings.API_TOKEN}" if settings.API_TOKEN else ""
+
+
 def _serialize(p: Photo) -> dict:
+    tok = _tok()
     return {
         "id": p.id,
         "filename": p.original_filename,
-        "thumbnail_url": f"/thumbnails/{Path(p.thumbnail_path).name}" if p.thumbnail_path else None,
-        "preview_url": f"/previews/{Path(p.preview_path).name}" if p.preview_path else None,
-        "original_url": f"/uploads/{p.filename}",
+        "thumbnail_url": f"/thumbnails/{Path(p.thumbnail_path).name}{tok}" if p.thumbnail_path else None,
+        "preview_url": f"/previews/{Path(p.preview_path).name}{tok}" if p.preview_path else None,
+        "original_url": f"/uploads/{p.filename}{tok}",
         "width": p.width,
         "height": p.height,
         "taken_at": p.taken_at.isoformat() if p.taken_at else None,
