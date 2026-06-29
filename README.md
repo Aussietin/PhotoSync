@@ -77,6 +77,46 @@ The backend defaults to `127.0.0.1` (localhost only). To use PhotoSync from your
 
 **Security note:** Never set `HOST=0.0.0.0` without also setting `API_TOKEN`. Without a token, anyone on the same Wi-Fi network can access your photos. With a token set, all routes — including image files — require it.
 
+### Run everything on one machine (recommended)
+
+PhotoSync is designed to run entirely on a single device — your laptop holds all
+the photos, the SQLite database, and does all the processing (no server or cloud
+needed). The fastest way to load a large library is **folder import**: in the UI,
+go to **Import**, point it at a folder on this machine (e.g. `~/Pictures`), and it
+indexes the photos. Your phone is optional — scan the QR in **Connect** to browse
+the same library over Wi-Fi.
+
+> **Note:** folder import references photos *in place* (it reads them where they
+> sit and stores the path). Browser upload instead copies files into
+> `backend/uploads/`. If you imported a folder, don't move or delete that source
+> folder or the library will lose track of those files.
+
+### Run with Docker Compose
+
+```bash
+# Generate a token and put it in a .env file next to docker-compose.yml:
+echo "API_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
+docker compose up --build
+# UI at http://localhost  (API token required — paste it when prompted)
+```
+
+The compose stack binds the backend to all interfaces, so `API_TOKEN` is
+**required** — compose will refuse to start without it.
+
+### Optional: local AI (semantic search + auto-tagging)
+
+AI features are off by default and **fully on-device** — no API key, no cost,
+nothing uploaded. To enable:
+
+```bash
+cd backend
+pip install -r requirements-ai.txt   # downloads CLIP weights (~350MB) on first analyze
+# then trigger indexing from the UI (Analyze) or POST /api/photos/analyze
+```
+
+If these deps aren't installed, the app still runs and tagging falls back to a
+colour heuristic.
+
 ## API Overview
 
 | Method | Path | Description |

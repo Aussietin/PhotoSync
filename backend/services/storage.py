@@ -1,3 +1,4 @@
+import logging
 import uuid
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from fastapi import UploadFile
 
 from config import settings
 from services import heif_support  # noqa: F401 — registers HEIC opener with Pillow
+
+logger = logging.getLogger("photosync")
 
 
 async def save_upload(file: UploadFile) -> tuple[Path, Path | None, Path | None, int]:
@@ -33,7 +36,8 @@ def _downscale_jpeg(source: Path, out: Path, size) -> Path | None:
             out.parent.mkdir(parents=True, exist_ok=True)
             img.save(out, "JPEG", quality=85, optimize=True)
         return out
-    except Exception:
+    except Exception as exc:
+        logger.warning("Could not downscale %s: %s", source, exc)
         return None
 
 

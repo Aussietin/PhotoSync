@@ -73,6 +73,25 @@ async def test_list_excludes_duplicates_by_default(client, db_session):
     assert resp.json()["total"] == 2
 
 
+async def test_duplicates_endpoint_serializes_with_tags(client, db_session):
+    """Regression: /duplicates must eager-load tags. _serialize reads p.tags,
+    and async lazy-load raises MissingGreenlet, so a duplicate with a tag (or
+    any duplicate at all) used to 500 here."""
+    from models.photo import Tag
+
+    orig = _photo(file_path="/fake/orig.jpg")
+    dup = _photo(file_path="/fake/dup.jpg", is_duplicate=True)
+    dup.tags.append(Tag(name="beach", source="manual"))
+    await _seed(db_session, [orig, dup])
+
+    resp = await client.get("/api/photos/duplicates")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["duplicates"]) == 1
+    assert body["duplicates"][0]["id"] == dup.id
+    assert body["duplicates"][0]["tags"][0]["name"] == "beach"
+
+
 async def test_list_favorites_filter(client, db_session):
     fav = _photo(file_path="/fake/fav.jpg", is_favorite=True)
     plain = _photo(file_path="/fake/plain.jpg")

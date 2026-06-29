@@ -71,8 +71,9 @@ and `perceptual_hash`. Albums via a many-to-many junction.
   `pillow-heif`. Without it, every iPhone photo silently failed processing (no
   thumbnail, dimensions, screenshot/quality detection). Fixed by
   `services/heif_support.py` registering the opener; dependency pinned.
-  *Still TODO:* desktop browsers can't render HEIC in the full-size modal — need
-  a web-friendly JPEG preview, not just the thumbnail (Stage 1).
+  *Resolved:* desktop browsers can't render HEIC in the full-size modal, so
+  `services/storage.py::_make_preview` writes a web-friendly JPEG preview
+  (1600px) served at `/previews/` and used by the viewer (Stage 1, shipped).
 - **`scipy` was imported but never declared** in requirements, so blur detection
   failed silently and every photo got a constant sharpness. Rewrote in pure
   numpy. Lesson: a bare `except` that hides an ImportError makes a core feature a

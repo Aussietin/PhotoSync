@@ -11,7 +11,14 @@ class Settings(BaseSettings):
     THUMBNAIL_SIZE: tuple[int, int] = (400, 400)
     PREVIEW_SIZE: tuple[int, int] = (1600, 1600)  # web-friendly JPEG for the viewer
     MAX_UPLOAD_SIZE_MB: int = 50
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # Allowed browser origins, comma-separated. Override in .env, e.g.
+    #   CORS_ORIGINS=http://localhost:5173,http://192.168.1.20:5173
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """CORS_ORIGINS parsed into a list for the CORS middleware."""
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
     # Quality/classification thresholds (0–1 brightness scale)
     DARK_THRESHOLD: float = 0.18

@@ -14,6 +14,7 @@ Vectors are L2-normalised, so cosine similarity is a plain dot product.
 """
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from typing import Optional
@@ -21,6 +22,8 @@ from typing import Optional
 import numpy as np
 
 from config import settings
+
+logger = logging.getLogger("photosync")
 
 # Lazily-loaded singleton model. _load_failed latches so we don't retry a slow
 # import on every call once it's known to be unavailable.
@@ -62,7 +65,13 @@ def _get_model():
             from sentence_transformers import SentenceTransformer
 
             _model = SentenceTransformer(settings.CLIP_MODEL)
-        except Exception:
+        except Exception as exc:
+            # Soft dependency: AI features stay off if torch/sentence-transformers
+            # aren't installed or the weights can't load. Logged once (latched).
+            logger.warning(
+                "Local CLIP model unavailable — semantic search and AI tagging "
+                "disabled (install requirements-ai.txt to enable): %s", exc
+            )
             _load_failed = True
             _model = None
         return _model
@@ -80,7 +89,8 @@ def embed_image(path: Path) -> Optional[np.ndarray]:
             rgb = img.convert("RGB")
             vec = model.encode([rgb], convert_to_numpy=True, normalize_embeddings=True)[0]
         return vec.astype(np.float32)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Could not embed image %s: %s", path, exc)
         return None
 
 
@@ -92,7 +102,8 @@ def embed_text(text: str) -> Optional[np.ndarray]:
     try:
         vec = model.encode([text], convert_to_numpy=True, normalize_embeddings=True)[0]
         return vec.astype(np.float32)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Could not embed query text: %s", exc)
         return None
 
 
