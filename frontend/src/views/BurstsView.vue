@@ -9,13 +9,18 @@
       </div>
       <button
         v-if="groups.length"
-        class="btn-ghost text-sm text-red-400 hover:text-red-300"
+        class="btn-danger text-sm"
         @click="cullAll"
-      >Cull all (keep best of each)</button>
+      >✂️ Cull all (keep best of each)</button>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
+    <div v-if="loading" class="space-y-6">
+      <div v-for="i in 2" :key="i" class="card p-4 space-y-3">
+        <Skeleton width="6rem" height="0.7rem" />
+        <div class="grid grid-cols-5 gap-2">
+          <div v-for="j in 5" :key="j" class="skeleton aspect-square rounded-xl" />
+        </div>
+      </div>
     </div>
 
     <div v-else-if="groups.length" class="space-y-6">
@@ -55,17 +60,29 @@
       </div>
     </div>
 
-    <div v-else class="flex flex-col items-center py-20 text-gray-600">
-      <span class="text-5xl mb-4">📸</span>
-      <p>No bursts found.</p>
-      <p class="text-sm mt-1">Run <router-link to="/cleanup" class="text-brand-400 hover:underline">Analyze</router-link> to detect them.</p>
-    </div>
+    <EmptyState
+      v-else
+      icon="📸"
+      title="No bursts found"
+      subtitle="Burst sequences are detected during a library analysis."
+    >
+      <template #action>
+        <router-link to="/cleanup" class="btn-soft text-sm">✨ Run Analyze</router-link>
+      </template>
+    </EmptyState>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { photosApi } from '../api/photos'
+import Skeleton from '../components/ui/Skeleton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
+
+const { success } = useToast()
+const { confirm } = useConfirm()
 
 const groups = ref([])
 const loading = ref(false)
@@ -103,13 +120,21 @@ async function cullGroup(group) {
       ? { ...g, photos: g.photos.filter((p) => !ids.includes(p.id)) }
       : g)
     .filter((g) => g.photos.length > 1)
+  success(`Culled ${ids.length} shot${ids.length > 1 ? 's' : ''}`)
 }
 
 async function cullAll() {
   const allIds = groups.value.flatMap((g) => [...(checked[g.burst_id] ?? [])])
   if (!allIds.length) return
-  if (!confirm(`Cull ${allIds.length} photos, keeping the best of each burst?`)) return
+  const ok = await confirm({
+    title: `Cull ${allIds.length} photos?`,
+    message: 'The sharpest shot in each burst is kept. The rest go to Trash.',
+    confirmText: 'Cull bursts',
+    danger: true,
+  })
+  if (!ok) return
   await photosApi.bulkDelete(allIds)
+  success(`Culled ${allIds.length} photos`)
   await load()
 }
 

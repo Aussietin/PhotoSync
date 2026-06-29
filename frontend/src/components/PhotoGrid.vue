@@ -16,17 +16,23 @@
         @toggle-favorite="$emit('toggle-favorite', $event)"
       />
     </div>
-    <div v-else class="flex flex-col items-center justify-center py-24 text-gray-600">
-      <span class="text-5xl mb-4">📷</span>
-      <p class="text-lg">No photos here</p>
-      <router-link v-if="showUploadHint" to="/upload" class="btn-primary mt-4 text-sm">Upload photos</router-link>
-    </div>
+    <EmptyState
+      v-else
+      icon="📷"
+      title="No photos here"
+      subtitle="Once you add photos they'll show up in this grid."
+    >
+      <template v-if="showUploadHint" #action>
+        <router-link to="/upload" class="btn-primary text-sm">⬆️ Upload photos</router-link>
+      </template>
+    </EmptyState>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import PhotoCard from './PhotoCard.vue'
+import EmptyState from './ui/EmptyState.vue'
 
 const props = defineProps({
   photos: { type: Array, default: () => [] },

@@ -1,6 +1,6 @@
 <template>
   <div class="max-w-lg mx-auto space-y-6">
-    <h1 class="text-xl font-bold">Import from Folder</h1>
+    <h1 class="text-2xl font-bold tracking-tight">Import from Folder</h1>
     <p class="text-sm text-gray-400">
       Point PhotoSync at a folder on the server's filesystem to bulk-import images without re-uploading.
       Useful for migrating an existing photo library.
@@ -45,7 +45,7 @@
           v-model="folderPath"
           type="text"
           placeholder="/home/user/Pictures"
-          class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand-500"
+          class="input font-mono"
         />
       </div>
 
@@ -59,18 +59,17 @@
         :disabled="!folderPath.trim() || loading"
         @click="runImport"
       >
-        {{ loading ? 'Importing…' : 'Start import' }}
+        <Spinner v-if="loading" :size="16" />
+        {{ loading ? 'Importing…' : '📥 Start import' }}
       </button>
 
       <!-- Live progress -->
-      <div v-if="job && job.status !== 'done'" class="space-y-1">
+      <div v-if="job && job.status !== 'done'" class="space-y-1.5">
         <div class="flex justify-between text-xs text-gray-500">
           <span>{{ job.status === 'error' ? 'Failed' : 'Importing & analyzing…' }}</span>
           <span v-if="job.percent != null">{{ job.processed }} / {{ job.total }} ({{ job.percent }}%)</span>
         </div>
-        <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
-          <div class="h-full bg-brand-500 transition-all duration-300" :style="{ width: `${job.percent ?? 5}%` }" />
-        </div>
+        <ProgressBar :value="job.percent ?? 5" :active="job.status !== 'error'" />
       </div>
     </div>
 
@@ -104,6 +103,8 @@
 import { ref } from 'vue'
 import { photosApi } from '../api/photos'
 import { useJob } from '../composables/useJob'
+import Spinner from '../components/ui/Spinner.vue'
+import ProgressBar from '../components/ui/ProgressBar.vue'
 
 const folderPath = ref('')
 const recursive = ref(true)

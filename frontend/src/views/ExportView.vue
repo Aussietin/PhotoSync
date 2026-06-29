@@ -1,7 +1,7 @@
 <template>
   <div class="max-w-2xl mx-auto space-y-6">
     <div>
-      <h1 class="text-xl font-bold">Export</h1>
+      <h1 class="text-2xl font-bold tracking-tight">Export</h1>
       <p class="text-sm text-gray-500 mt-1">
         Get your cleaned library out. PhotoSync can't delete from your iPhone directly,
         so the workflow is: clean here → export the keepers → make this your master → wipe/re-sync the phone.
@@ -40,8 +40,8 @@
         </p>
       </div>
       <div class="flex gap-2">
-        <a :href="csvHref" class="btn-ghost text-sm">⬇ CSV</a>
-        <a :href="jsonHref" class="btn-ghost text-sm">⬇ JSON</a>
+        <a :href="csvHref" class="btn-soft text-sm">⬇ CSV</a>
+        <a :href="jsonHref" class="btn-soft text-sm">⬇ JSON</a>
       </div>
     </div>
 

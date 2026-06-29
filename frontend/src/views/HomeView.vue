@@ -2,22 +2,22 @@
   <div>
     <!-- Controls bar -->
     <div class="flex flex-wrap items-center gap-2 mb-4">
-      <h1 class="text-xl font-bold mr-auto">
+      <h1 class="text-2xl font-bold tracking-tight mr-auto">
         Library
-        <span class="text-gray-500 font-normal text-base">({{ total }})</span>
+        <span class="text-gray-500 font-normal text-base">({{ total.toLocaleString() }})</span>
       </h1>
 
       <!-- Favorites filter -->
       <button
-        class="px-3 py-1.5 rounded-xl text-sm font-medium transition-colors"
-        :class="favoritesOnly ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+        class="text-sm"
+        :class="favoritesOnly ? 'chip text-red-300 bg-red-500/15 border border-red-500/30' : 'chip-muted'"
         @click="toggleFavorites"
       >♥ Favorites</button>
 
       <!-- Sort -->
       <select
         v-model="sort"
-        class="bg-gray-800 border border-gray-700 rounded-xl px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-brand-500"
+        class="bg-ink-850/80 border border-white/10 rounded-full px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-brand-400/60"
         @change="reload"
       >
         <option value="date_desc">Newest first</option>
@@ -31,30 +31,34 @@
 
       <!-- Select mode toggle -->
       <button
-        class="px-3 py-1.5 rounded-xl text-sm font-medium transition-colors"
-        :class="sel.selecting.value ? 'bg-brand-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+        class="text-sm"
+        :class="sel.selecting.value ? 'chip-active' : 'chip-muted'"
         @click="sel.selecting.value ? sel.clear() : (sel.selecting.value = true)"
       >Select</button>
 
       <!-- Select all -->
       <button
         v-if="sel.selecting.value"
-        class="px-3 py-1.5 rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 text-sm"
+        class="chip-muted text-sm"
         @click="sel.selectAll(photos.map(p => p.id))"
       >All</button>
     </div>
 
-    <div v-if="loading && !photos.length" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
-    </div>
+    <PhotoGridSkeleton v-if="loading && !photos.length" :count="24" />
 
     <PhotoGrid
+      v-else
       :photos="photos"
       :selection="sel"
       :selection-mode="sel.selecting.value"
       @select="openModal"
       @toggle-favorite="toggleFavorite"
     />
+
+    <!-- Infinite-scroll loading footer -->
+    <div v-if="loading && photos.length" class="flex justify-center py-6">
+      <Spinner :size="22" label="Loading more…" />
+    </div>
 
     <div ref="sentinel" class="h-10" />
 
@@ -88,8 +92,15 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { photosApi } from '../api/photos'
 import { useSelection } from '../composables/useSelection'
 import PhotoGrid from '../components/PhotoGrid.vue'
+import PhotoGridSkeleton from '../components/ui/PhotoGridSkeleton.vue'
+import Spinner from '../components/ui/Spinner.vue'
 import PhotoModal from '../components/PhotoModal.vue'
 import BatchToolbar from '../components/BatchToolbar.vue'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
+
+const { success, error: toastError } = useToast()
+const { confirm } = useConfirm()
 
 const photos = ref([])
 const total = ref(0)
@@ -158,28 +169,44 @@ async function updateNotes(id, notes) {
 
 async function bulkDelete() {
   if (!sel.count.value) return
+  const n = sel.count.value
+  const ok = await confirm({
+    title: `Move ${n} photo${n > 1 ? 's' : ''} to Trash?`,
+    message: 'You can restore them from Trash later.',
+    confirmText: 'Move to Trash',
+    danger: true,
+  })
+  if (!ok) return
   await photosApi.bulkDelete(sel.ids.value)
   photos.value = photos.value.filter((p) => !sel.selected.value.has(p.id))
-  total.value -= sel.count.value
+  total.value -= n
   sel.clear()
+  success(`Moved ${n} photo${n > 1 ? 's' : ''} to Trash`)
 }
 
 async function bulkFavorite() {
   if (!sel.count.value) return
+  const n = sel.count.value
   await photosApi.bulkFavorite(sel.ids.value)
   photos.value.forEach((p) => { if (sel.selected.value.has(p.id)) p.is_favorite = true })
   sel.clear()
+  success(`Added ${n} to Favorites`)
 }
 
 async function bulkDownload() {
   if (!sel.count.value) return
-  const { data } = await photosApi.downloadZip(sel.ids.value)
-  const url = URL.createObjectURL(data)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'photosync-export.zip'
-  a.click()
-  URL.revokeObjectURL(url)
+  try {
+    const { data } = await photosApi.downloadZip(sel.ids.value)
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'photosync-export.zip'
+    a.click()
+    URL.revokeObjectURL(url)
+    success('Your ZIP is downloading')
+  } catch {
+    toastError('Could not build the ZIP — please try again.')
+  }
 }
 
 let observer

@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col items-center max-w-xl mx-auto">
     <div class="w-full flex items-center justify-between mb-4">
-      <h1 class="text-xl font-bold">Triage</h1>
+      <h1 class="text-2xl font-bold tracking-tight">Triage</h1>
       <div class="flex gap-2 text-sm">
         <label class="flex items-center gap-1.5 text-gray-400 cursor-pointer">
           <input v-model="opts.screenshots" type="checkbox" class="accent-brand-500" @change="reload" />
@@ -24,18 +24,13 @@
         <span>{{ currentIndex + 1 }} of {{ queue.length }}</span>
         <span>🗑 {{ toDelete.size }} to delete &nbsp; ✓ {{ toKeep.size }} kept</span>
       </div>
-      <div class="w-full bg-gray-800 rounded-full h-1.5">
-        <div
-          class="h-full bg-brand-500 rounded-full transition-all"
-          :style="{ width: `${((currentIndex) / queue.length) * 100}%` }"
-        />
-      </div>
+      <ProgressBar :value="(currentIndex / queue.length) * 100" :height="6" :active="false" />
     </div>
 
     <!-- Loading -->
-    <div v-if="loading" class="flex flex-col items-center py-20 text-gray-500 gap-3">
-      <span class="animate-pulse text-4xl">⏳</span>
-      <span>Building triage queue…</span>
+    <div v-if="loading" class="flex flex-col items-center py-20 gap-4">
+      <Spinner :size="34" />
+      <span class="text-gray-500 text-sm">Building triage queue…</span>
     </div>
 
     <!-- Done state -->
@@ -137,6 +132,11 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { photosApi } from '../api/photos'
+import Spinner from '../components/ui/Spinner.vue'
+import ProgressBar from '../components/ui/ProgressBar.vue'
+import { useToast } from '../composables/useToast'
+
+const { success } = useToast()
 
 const queue = ref([])
 const currentIndex = ref(0)
@@ -219,6 +219,7 @@ async function executeDeletes() {
   const ids = [...toDelete.value]
   if (!ids.length) return
   await photosApi.bulkDelete(ids)
+  success(`Moved ${ids.length} photo${ids.length > 1 ? 's' : ''} to Trash`)
   toDelete.value = new Set()
   done.value = false
   await reload()

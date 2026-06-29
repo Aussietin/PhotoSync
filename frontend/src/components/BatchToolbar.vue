@@ -4,9 +4,10 @@
       v-if="count > 0"
       class="fixed bottom-20 sm:bottom-6 inset-x-0 flex justify-center z-40 px-4 pointer-events-none"
     >
-      <div class="pointer-events-auto bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 max-w-lg w-full">
-        <span class="text-sm font-medium text-gray-300 flex-shrink-0">
-          {{ count }} selected
+      <div class="pointer-events-auto glass shadow-soft px-4 py-3 flex items-center gap-3 max-w-lg w-full animate-fade-up">
+        <span class="text-sm font-semibold text-gray-100 flex-shrink-0 flex items-center gap-1.5">
+          <span class="grid place-items-center min-w-6 h-6 px-1.5 rounded-full bg-brand-gradient text-white text-xs">{{ count }}</span>
+          selected
         </span>
 
         <div class="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar">
@@ -23,7 +24,7 @@
         </div>
 
         <button
-          class="flex-shrink-0 w-7 h-7 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 flex items-center justify-center text-sm"
+          class="flex-shrink-0 w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 flex items-center justify-center text-sm"
           @click="$emit('clear')"
         >✕</button>
       </div>
@@ -38,7 +39,7 @@ defineEmits(['favorite', 'download', 'delete', 'clear'])
 
 <style scoped>
 .toolbar-btn {
-  @apply flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors whitespace-nowrap;
+  @apply flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-200 text-sm font-medium transition-colors whitespace-nowrap;
 }
 .slide-up-enter-active,
 .slide-up-leave-active {

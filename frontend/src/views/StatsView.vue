@@ -1,9 +1,23 @@
 <template>
   <div class="space-y-6">
-    <h1 class="text-xl font-bold">Statistics</h1>
+    <h1 class="text-2xl font-bold tracking-tight">Statistics</h1>
 
-    <div v-if="loading" class="flex justify-center py-20">
-      <span class="text-gray-500 animate-pulse">Loading…</span>
+    <!-- Skeleton state -->
+    <div v-if="loading" class="space-y-6">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div v-for="i in 6" :key="i" class="card p-4 flex flex-col items-center gap-2">
+          <Skeleton width="2rem" height="2rem" rounded="rounded-xl" />
+          <Skeleton width="3.5rem" height="1.1rem" />
+          <Skeleton width="2.5rem" height="0.7rem" />
+        </div>
+      </div>
+      <div class="card p-5 space-y-3">
+        <Skeleton width="10rem" height="0.9rem" />
+        <div v-for="i in 6" :key="i" class="flex items-center gap-3">
+          <Skeleton width="4rem" height="0.7rem" />
+          <Skeleton :width="`${30 + (i * 9) % 60}%`" height="1rem" rounded="rounded-full" />
+        </div>
+      </div>
     </div>
 
     <template v-else-if="stats">
@@ -76,14 +90,14 @@
       <div v-if="stats.avg_quality != null" class="card p-5">
         <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Average quality score</h2>
         <div class="flex items-center gap-4">
-          <div class="flex-1 bg-gray-800 rounded-full h-4 overflow-hidden">
+          <div class="flex-1 bg-ink-800 rounded-full h-4 overflow-hidden">
             <div
               class="h-full rounded-full transition-all"
-              :class="qualityColor"
+              :class="qualityBar"
               :style="{ width: `${stats.avg_quality * 100}%` }"
             />
           </div>
-          <span class="text-lg font-bold" :class="qualityColor">{{ Math.round(stats.avg_quality * 100) }}%</span>
+          <span class="text-lg font-bold" :class="qualityText">{{ Math.round(stats.avg_quality * 100) }}%</span>
         </div>
       </div>
     </template>
@@ -93,14 +107,15 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { statsApi } from '../api/photos'
+import Skeleton from '../components/ui/Skeleton.vue'
 
 // Inline stat card
 const StatCard = {
   props: ['label', 'value', 'icon'],
   template: `
-    <div class="card p-4 text-center">
-      <div class="text-2xl mb-1">{{ icon }}</div>
-      <div class="text-lg font-bold text-gray-100">{{ value }}</div>
+    <div class="card surface-hover p-4 text-center group">
+      <div class="w-10 h-10 mx-auto mb-2 grid place-items-center text-xl rounded-xl bg-brand-gradient-soft border border-white/5 transition-transform group-hover:scale-110">{{ icon }}</div>
+      <div class="text-xl font-bold text-gray-100">{{ value }}</div>
       <div class="text-xs text-gray-500 mt-0.5">{{ label }}</div>
     </div>
   `,
@@ -129,12 +144,19 @@ const maxCount = computed(() => Math.max(...(chartData.value.map((d) => d.count)
 function barWidth(count) { return `${(count / maxCount.value) * 100}%` }
 function pct(count, max) { return max ? `${(count / max) * 100}%` : '0%' }
 
-const qualityColor = computed(() => {
+const qualityBar = computed(() => {
   const q = stats.value?.avg_quality
   if (q == null) return ''
-  if (q >= 0.7) return 'bg-green-500 text-green-400'
-  if (q >= 0.4) return 'bg-yellow-500 text-yellow-400'
-  return 'bg-red-500 text-red-400'
+  if (q >= 0.7) return 'bg-green-500'
+  if (q >= 0.4) return 'bg-yellow-500'
+  return 'bg-red-500'
+})
+const qualityText = computed(() => {
+  const q = stats.value?.avg_quality
+  if (q == null) return ''
+  if (q >= 0.7) return 'text-green-400'
+  if (q >= 0.4) return 'text-yellow-400'
+  return 'text-red-400'
 })
 
 function formatBytes(b) {

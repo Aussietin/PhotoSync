@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 class="text-xl font-bold mb-4">Search</h1>
+    <h1 class="text-2xl font-bold tracking-tight mb-4">Search</h1>
 
     <!-- Mode toggle: keyword (exact) vs smart (meaning-based, local CLIP) -->
     <div class="flex gap-1 mb-4 bg-gray-800 p-1 rounded-xl w-fit">
@@ -28,10 +28,10 @@
       </p>
 
       <div v-if="mode === 'keyword'" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <input v-model="dateFrom" type="date" class="input-field" placeholder="From date" />
-        <input v-model="dateTo" type="date" class="input-field" placeholder="To date" />
-        <input v-model="camera" class="input-field" placeholder="Camera model" />
-        <button class="btn-primary text-sm" @click="doSearch">Search</button>
+        <input v-model="dateFrom" type="date" class="input" placeholder="From date" />
+        <input v-model="dateTo" type="date" class="input" placeholder="To date" />
+        <input v-model="camera" class="input" placeholder="Camera model" />
+        <button class="btn-primary text-sm" @click="doSearch">🔍 Search</button>
       </div>
       <div v-else>
         <button class="btn-primary text-sm" @click="doSearch">Search</button>
@@ -42,16 +42,14 @@
         <button
           v-for="tag in allTags"
           :key="tag"
-          class="px-2 py-0.5 rounded-full text-xs transition-colors"
-          :class="activeTag === tag ? 'bg-brand-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+          class="text-xs"
+          :class="activeTag === tag ? 'chip-active' : 'chip-muted'"
           @click="toggleTag(tag)"
         >{{ tag }}</button>
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-10">
-      <span class="text-gray-500 animate-pulse">Searching…</span>
-    </div>
+    <PhotoGridSkeleton v-if="loading" :count="12" />
 
     <!-- Model-not-installed notice for smart search -->
     <div v-else-if="modelUnavailable" class="rounded-xl border border-amber-700/40 bg-amber-900/20 p-4 text-sm text-amber-200">
@@ -67,10 +65,24 @@
       <p>No photos indexed for smart search yet. Run <span class="font-mono">Analyze library</span> from the Cleanup tab first.</p>
     </div>
 
-    <div v-else-if="searched">
+    <div v-else-if="searched && results.length">
       <p class="text-sm text-gray-500 mb-3">{{ results.length }} result{{ results.length !== 1 ? 's' : '' }}</p>
       <PhotoGrid :photos="results" @select="selected = $event" />
     </div>
+
+    <EmptyState
+      v-else-if="searched"
+      icon="🔍"
+      title="No matches found"
+      subtitle="Try a different keyword, tag, or widen your date range."
+    />
+
+    <EmptyState
+      v-else
+      icon="🔎"
+      title="Search your library"
+      subtitle="Find photos by tag, filename, camera, or date taken."
+    />
 
     <PhotoModal v-if="selected" :photo="selected" @close="selected = null" @delete="deletePhoto" />
   </div>
@@ -81,6 +93,8 @@ import { ref, onMounted } from 'vue'
 import { searchApi, tagsApi, photosApi } from '../api/photos'
 import SearchBar from '../components/SearchBar.vue'
 import PhotoGrid from '../components/PhotoGrid.vue'
+import PhotoGridSkeleton from '../components/ui/PhotoGridSkeleton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 import PhotoModal from '../components/PhotoModal.vue'
 
 const mode = ref('keyword')
@@ -152,9 +166,3 @@ async function deletePhoto(id) {
   selected.value = null
 }
 </script>
-
-<style scoped>
-.input-field {
-  @apply bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500 w-full;
-}
-</style>
