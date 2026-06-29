@@ -43,9 +43,18 @@ async def upload_photos(
     files: list[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
 ):
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     results = []
     for file in files:
         orig_name = file.filename or "photo.jpg"
+        # Reject oversized uploads before writing anything to disk. Starlette
+        # populates UploadFile.size for multipart parts.
+        if file.size is not None and file.size > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"'{orig_name}' is {file.size // (1024 * 1024)} MB; "
+                       f"limit is {settings.MAX_UPLOAD_SIZE_MB} MB.",
+            )
         file_path, thumb_path, preview_path, file_size = await save_upload(file)
         metadata = await process_photo(file_path, original_filename=orig_name)
 
@@ -231,7 +240,13 @@ async def map_pins(db: AsyncSession = Depends(get_db)):
 
 @router.get("/duplicates")
 async def list_duplicates(db: AsyncSession = Depends(get_db)):
-    q = select(Photo).where(Photo.is_duplicate == True, Photo.deleted_at.is_(None))  # noqa: E712
+    # selectinload(tags) is required: _serialize reads p.tags, and async lazy-load
+    # raises MissingGreenlet (same fix as /trash).
+    q = (
+        select(Photo)
+        .where(Photo.is_duplicate == True, Photo.deleted_at.is_(None))  # noqa: E712
+        .options(selectinload(Photo.tags))
+    )
     result = await db.execute(q)
     return {"duplicates": [_serialize(p) for p in result.scalars().all()]}
 

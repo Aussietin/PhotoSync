@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from services import heif_support  # noqa: F401 — registers HEIC opener with Pillow
+
+logger = logging.getLogger("photosync")
 
 
 async def process_photo(file_path: Path, original_filename: str | None = None) -> dict[str, Any]:
@@ -18,8 +21,10 @@ async def process_photo(file_path: Path, original_filename: str | None = None) -
         meta["width"], meta["height"] = img.size
         meta["perceptual_hash"] = str(imagehash.phash(img))
         meta["quality_score"] = _quality_score(img, np)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Could not process %s (no dimensions/hash/quality): %s", file_path, exc
+        )
 
     meta.update(_extract_exif(file_path))
 
@@ -137,8 +142,8 @@ def _extract_exif(file_path: Path) -> dict[str, Any]:
         if lon is not None:
             meta["gps_lon"] = lon
 
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Could not read EXIF from %s: %s", file_path, exc)
 
     return meta
 
