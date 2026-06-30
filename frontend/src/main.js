@@ -11,6 +11,8 @@ import DuplicatesView from './views/DuplicatesView.vue'
 import DuplicateGroupsView from './views/DuplicateGroupsView.vue'
 import ScreenshotsView from './views/ScreenshotsView.vue'
 import LargeView from './views/LargeView.vue'
+import PeopleView from './views/PeopleView.vue'
+import PersonDetailView from './views/PersonDetailView.vue'
 import TriageView from './views/TriageView.vue'
 import CleanupView from './views/CleanupView.vue'
 import BurstsView from './views/BurstsView.vue'
@@ -33,6 +35,8 @@ const router = createRouter({
     { path: '/duplicates/list', component: DuplicatesView },
     { path: '/screenshots', component: ScreenshotsView },
     { path: '/large', component: LargeView },
+    { path: '/people', component: PeopleView },
+    { path: '/people/:id', component: PersonDetailView },
     { path: '/triage', component: TriageView },
     { path: '/cleanup', component: CleanupView },
     { path: '/bursts', component: BurstsView },

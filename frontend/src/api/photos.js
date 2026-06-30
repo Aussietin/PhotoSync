@@ -128,3 +128,11 @@ export const albumsApi = {
 export const statsApi = {
   get: () => api.get('/stats'),
 }
+
+export const peopleApi = {
+  list: (params = {}) => api.get('/people', { params }),
+  update: (id, body) => api.patch(`/people/${id}`, body),
+  photos: (id, params = {}) => api.get(`/people/${id}/photos`, { params }),
+  trashPhotos: (id) => api.post(`/people/${id}/trash-photos`),
+  merge: (id, otherId) => api.post(`/people/${id}/merge`, { other_id: otherId }),
+}

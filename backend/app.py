@@ -8,14 +8,14 @@ from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from database import init_db
-from routes import photos, tags, search, albums, stats, jobs, export
+from routes import photos, tags, search, albums, stats, jobs, export, people
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import logging
     await init_db()
-    for d in (settings.UPLOAD_DIR, settings.THUMBNAIL_DIR, settings.PREVIEW_DIR):
+    for d in (settings.UPLOAD_DIR, settings.THUMBNAIL_DIR, settings.PREVIEW_DIR, settings.FACE_DIR):
         os.makedirs(d, exist_ok=True)
     from services.jobs import reap_stale_jobs
     await reap_stale_jobs()  # clear jobs left 'running' by a previous crash
@@ -39,8 +39,9 @@ async def lifespan(app: FastAPI):
 
     async def _warm_ai():
         try:
-            from services import embeddings
+            from services import embeddings, faces
             await asyncio.to_thread(embeddings.is_available)
+            await asyncio.to_thread(faces.is_available)
         except Exception:
             pass
 
@@ -59,7 +60,7 @@ app.add_middleware(
 )
 
 
-_PROTECTED_PREFIXES = ("/api/", "/uploads/", "/thumbnails/", "/previews/")
+_PROTECTED_PREFIXES = ("/api/", "/uploads/", "/thumbnails/", "/previews/", "/faces/")
 _PUBLIC_PATHS = {"/api/health"}
 
 
@@ -91,10 +92,16 @@ app.include_router(albums.router, prefix="/api/albums", tags=["albums"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
+app.include_router(people.router, prefix="/api/people", tags=["people"])
 
+# StaticFiles validates the directory at mount time (before lifespan runs), so
+# make sure they all exist now — also avoids an import crash on a fresh checkout.
+for _d in (settings.UPLOAD_DIR, settings.THUMBNAIL_DIR, settings.PREVIEW_DIR, settings.FACE_DIR):
+    os.makedirs(_d, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 app.mount("/thumbnails", StaticFiles(directory=settings.THUMBNAIL_DIR), name="thumbnails")
 app.mount("/previews", StaticFiles(directory=settings.PREVIEW_DIR), name="previews")
+app.mount("/faces", StaticFiles(directory=settings.FACE_DIR), name="faces")
 
 
 @app.get("/api/health")

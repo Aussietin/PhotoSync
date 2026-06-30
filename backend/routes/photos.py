@@ -645,6 +645,7 @@ async def empty_trash(
 async def analyze_library(
     recompute_quality: bool = Query(True),
     ai_tagging: bool = Query(True, description="Run local CLIP tagging + embeddings"),
+    face_grouping: bool = Query(True, description="Detect + cluster faces into people"),
     reanalyze: bool = Query(False, description="Re-tag photos that already have AI tags"),
 ):
     """Background one-shot analysis: screenshot flags, quality scores, exposure/
@@ -659,7 +660,9 @@ async def analyze_library(
         from services.deduplicator import rescan_duplicates
         from services.bursts import group_bursts
         from services.ai_tagger import tag_photo
-        from services import embeddings
+        from services import embeddings, faces
+        from services import face_clustering
+        from models.photo import Face
         from sqlalchemy.orm import selectinload
         import uuid
 
@@ -671,7 +674,12 @@ async def analyze_library(
         await session.commit()
 
         clip_available = ai_tagging and embeddings.is_available()
-        screenshots_flagged = quality_updated = previews_made = ai_tagged = 0
+        face_available = face_grouping and faces.is_available()
+        # Photos already face-scanned, so re-runs only process new ones.
+        faces_done: set[int] = set((await session.execute(
+            select(Face.photo_id).distinct()
+        )).scalars().all()) if face_available else set()
+        screenshots_flagged = quality_updated = previews_made = ai_tagged = faces_found = 0
         for idx, photo in enumerate(photos):
             if (photo.mime_type or "").startswith("video/"):
                 # Videos have no decodable frames here — nothing to analyze.
@@ -715,12 +723,17 @@ async def analyze_library(
                 if needs_ai and await tag_photo(session, photo):
                     ai_tagged += 1
 
+            # Local face detection + embedding (clustered into people after the loop).
+            if face_available and (reanalyze or photo.id not in faces_done):
+                faces_found += await face_clustering.index_photo_faces(session, photo)
+
             if (idx + 1) % 50 == 0 or idx + 1 == len(photos):
                 job.processed = idx + 1
                 await session.commit()
 
         dup_summary = await rescan_duplicates(session)
         burst_summary = await group_bursts(session)
+        face_summary = await face_clustering.assign_unclustered(session) if face_available else None
 
         return {
             "scanned": len(photos),
@@ -729,6 +742,9 @@ async def analyze_library(
             "previews_made": previews_made,
             "ai_tagged": ai_tagged,
             "clip_model_available": clip_available,
+            "faces_found": faces_found,
+            "face_model_available": face_available,
+            "people": face_summary,
             "duplicates": dup_summary,
             "bursts": burst_summary,
         }

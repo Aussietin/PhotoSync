@@ -48,10 +48,24 @@ class Settings(BaseSettings):
     # model — no data ever leaves the machine, no API key, no cost. The model is
     # an OPTIONAL dependency (pip install -r requirements-ai.txt). If it isn't
     # installed the app still runs and tagging falls back to the colour heuristic.
-    CLIP_MODEL: str = "clip-ViT-B-32"  # sentence-transformers model id (~350MB)
+    # Vision model for semantic search + zero-shot tagging. Swap to a stronger
+    # local model for sharper results (slower to index on CPU), e.g.
+    #   clip-ViT-L-14      — bigger CLIP, noticeably better retrieval
+    # Both are sentence-transformers ids and run fully on-device.
+    CLIP_MODEL: str = "clip-ViT-B-32"
     # A zero-shot tag is kept when image↔label cosine similarity exceeds this.
     AI_TAG_THRESHOLD: float = 0.22
     AI_MAX_TAGS: int = 8
+
+    # ── Local face recognition (InsightFace / ArcFace) ───────────────────────
+    # Detect + embed faces, cluster into people, so you can name who you know and
+    # bulk-cull everyone you don't. Fully on-device, optional dependency
+    # (pip install -r requirements-ai.txt). If unavailable, face features are off.
+    FACE_MODEL: str = "buffalo_l"          # InsightFace model pack (~300MB once)
+    FACE_MIN_DET_SCORE: float = 0.60       # ignore weak/uncertain detections
+    FACE_MATCH_THRESHOLD: float = 0.45     # cosine sim to merge a face into a person
+    FACE_MIN_SIZE: int = 40                # ignore tiny faces (px, longest side)
+    FACE_DIR: str = str(Path(__file__).parent / "faces")  # cropped face thumbnails
 
     model_config = SettingsConfigDict(env_file=".env")
 

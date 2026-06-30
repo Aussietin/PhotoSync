@@ -26,6 +26,11 @@
         {{ analyzeResult.screenshots }} screenshots,
         {{ analyzeResult.duplicates?.duplicates ?? 0 }} duplicates,
         {{ analyzeResult.quality_recomputed }} quality scores updated.
+        <template v-if="analyzeResult.face_model_available">
+          <br />Found {{ analyzeResult.faces_found }} faces across
+          <router-link to="/people" class="underline font-medium">{{ analyzeResult.people?.total_people ?? 0 }} people</router-link> —
+          name who you know to cull the rest.
+        </template>
       </div>
       <div v-if="analyzing" class="space-y-1.5">
         <div class="flex justify-between text-xs text-gray-500">

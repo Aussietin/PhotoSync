@@ -13,6 +13,7 @@ export const navGroups = [
   {
     title: 'Tidy up',
     items: [
+      { to: '/people', label: 'People', icon: '🙂', desc: 'Group by face; cull who you don\'t know' },
       { to: '/screenshots', label: 'Screenshots', icon: '📱', desc: 'Find & clear screen grabs' },
       { to: '/duplicates', label: 'Duplicates', icon: '🔁', desc: 'Near-identical shots' },
       { to: '/bursts', label: 'Bursts', icon: '📸', desc: 'Keep the best of each burst' },
