@@ -51,6 +51,9 @@ export const photosApi = {
   listScreenshots: (params) => api.get('/photos/screenshots', { params }),
   scanScreenshots: () => api.post('/photos/scan-screenshots'),
 
+  // Large files (videos / space hogs)
+  listLarge: (params) => api.get('/photos/large', { params }),
+
   // Duplicate groups (returns { job_id } — poll via jobsApi)
   duplicateGroups: () => api.get('/photos/duplicate-groups'),
   rescanDuplicates: () => api.post('/photos/rescan-duplicates'),

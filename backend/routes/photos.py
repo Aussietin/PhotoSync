@@ -20,7 +20,7 @@ from models.photo import Photo, DeletionLog
 from services.storage import save_upload
 from services.image_processor import process_photo
 from services.deduplicator import find_duplicate
-from utils.helpers import is_image
+from utils.helpers import is_image, is_media, is_video, guess_mime
 
 router = APIRouter()
 
@@ -56,9 +56,11 @@ async def upload_photos(
                        f"limit is {settings.MAX_UPLOAD_SIZE_MB} MB.",
             )
         file_path, thumb_path, preview_path, file_size = await save_upload(file)
-        metadata = await process_photo(file_path, original_filename=orig_name)
+        # Videos have no image metadata/hash; track them for size-based culling.
+        is_vid = is_video(orig_name)
+        metadata = {} if is_vid else await process_photo(file_path, original_filename=orig_name)
 
-        dup_id = await find_duplicate(db, metadata.get("perceptual_hash"))
+        dup_id = None if is_vid else await find_duplicate(db, metadata.get("perceptual_hash"))
 
         photo = Photo(
             filename=file_path.name,
@@ -67,7 +69,7 @@ async def upload_photos(
             thumbnail_path=str(thumb_path) if thumb_path else None,
             preview_path=str(preview_path) if preview_path else None,
             file_size=file_size,
-            mime_type=file.content_type or "image/jpeg",
+            mime_type=file.content_type or guess_mime(orig_name),
             is_duplicate=dup_id is not None,
             duplicate_of_id=dup_id,
             **_photo_fields(metadata),
@@ -114,7 +116,7 @@ async def import_folder(body: FolderImportIn):
         raise HTTPException(status_code=400, detail="Path does not exist or is not a directory")
 
     pattern = "**/*" if body.recursive else "*"
-    files = [p for p in folder.glob(pattern) if p.is_file() and is_image(p.name)]
+    files = [p for p in folder.glob(pattern) if p.is_file() and is_media(p.name)]
 
     async def runner(session: AsyncSession, job) -> dict:
         from services.storage import _make_thumbnail, _make_preview
@@ -129,20 +131,31 @@ async def import_folder(body: FolderImportIn):
 
         for idx, file_path in enumerate(files):
             if str(file_path) not in known:
-                metadata = await process_photo(file_path, original_filename=file_path.name)
-                stem = uuid.uuid4().hex
-                thumb_path = await _make_thumbnail(file_path, stem)
-                preview_path = await _make_preview(file_path, stem)
-                session.add(Photo(
-                    filename=file_path.name,
-                    original_filename=file_path.name,
-                    file_path=str(file_path),
-                    thumbnail_path=str(thumb_path) if thumb_path else None,
-                    preview_path=str(preview_path) if preview_path else None,
-                    file_size=file_path.stat().st_size,
-                    mime_type="image/jpeg",
-                    **_photo_fields(metadata),
-                ))
+                if is_video(file_path.name):
+                    # No frame decoder — index videos for size-based culling only.
+                    session.add(Photo(
+                        filename=file_path.name,
+                        original_filename=file_path.name,
+                        file_path=str(file_path),
+                        file_size=file_path.stat().st_size,
+                        mime_type=guess_mime(file_path.name),
+                        **_photo_fields({}),
+                    ))
+                else:
+                    metadata = await process_photo(file_path, original_filename=file_path.name)
+                    stem = uuid.uuid4().hex
+                    thumb_path = await _make_thumbnail(file_path, stem)
+                    preview_path = await _make_preview(file_path, stem)
+                    session.add(Photo(
+                        filename=file_path.name,
+                        original_filename=file_path.name,
+                        file_path=str(file_path),
+                        thumbnail_path=str(thumb_path) if thumb_path else None,
+                        preview_path=str(preview_path) if preview_path else None,
+                        file_size=file_path.stat().st_size,
+                        mime_type=guess_mime(file_path.name),
+                        **_photo_fields(metadata),
+                    ))
                 known.add(str(file_path))
                 imported += 1
             else:
@@ -357,7 +370,14 @@ def _meme_condition():
         Photo.camera_make.is_(None)
         & Photo.camera_model.is_(None)
         & (Photo.is_screenshot == False)  # noqa: E712
+        # Videos also lack camera EXIF here — don't mistake them for memes.
+        & Photo.mime_type.not_like("video/%")
     )
+
+
+def _large_condition():
+    """Files at or above the configured large-file size (mostly videos)."""
+    return Photo.file_size >= settings.LARGE_FILE_MB * 1024 * 1024
 
 
 def _cleanup_conditions(body: "CleanupFilterIn"):
@@ -379,6 +399,8 @@ def _cleanup_conditions(body: "CleanupFilterIn"):
         conditions.append(Photo.is_low_res == True)  # noqa: E712
     if body.memes:
         conditions.append(_meme_condition())
+    if body.large:
+        conditions.append(_large_condition())
     if body.max_quality is not None:
         conditions.append(
             (Photo.quality_score <= body.max_quality) & Photo.quality_score.is_not(None)
@@ -393,6 +415,7 @@ class CleanupFilterIn(BaseModel):
     overexposed: bool = False
     low_res: bool = False
     memes: bool = False  # received/forwarded images with no camera EXIF
+    large: bool = False  # big files (mostly videos) at/above LARGE_FILE_MB
     max_quality: float | None = None  # trash photos with quality <= this
 
 
@@ -413,6 +436,7 @@ async def cleanup_summary(
 
     low_q = (Photo.quality_score <= max_quality) & Photo.quality_score.is_not(None)
     meme_cond = _meme_condition()
+    large_cond = _large_condition()
     screenshots = await _count_and_size(Photo.is_screenshot == True)  # noqa: E712
     duplicates = await _count_and_size(Photo.is_duplicate == True)  # noqa: E712
     low_quality = await _count_and_size(low_q)
@@ -420,6 +444,7 @@ async def cleanup_summary(
     overexposed = await _count_and_size(Photo.is_overexposed == True)  # noqa: E712
     low_res = await _count_and_size(Photo.is_low_res == True)  # noqa: E712
     memes = await _count_and_size(meme_cond)
+    large = await _count_and_size(large_cond)
     # Union (a photo may match more than one category — count it once)
     reclaimable = await _count_and_size(
         or_(
@@ -429,6 +454,7 @@ async def cleanup_summary(
             Photo.is_overexposed == True,  # noqa: E712
             Photo.is_low_res == True,  # noqa: E712
             meme_cond,
+            large_cond,
             low_q,
         )
     )
@@ -441,6 +467,8 @@ async def cleanup_summary(
         "overexposed": overexposed,
         "low_res": low_res,
         "memes": memes,
+        "large": large,
+        "large_threshold_mb": settings.LARGE_FILE_MB,
         "low_quality_threshold": max_quality,
         "total_reclaimable": reclaimable,
     }
@@ -468,6 +496,7 @@ async def run_cleanup(body: CleanupFilterIn, db: AsyncSession = Depends(get_db))
         "overexposed" if body.overexposed else "",
         "low_res" if body.low_res else "",
         "memes" if body.memes else "",
+        "large" if body.large else "",
         "low_quality" if body.max_quality is not None else "",
     ) if k) or "manual"
 
@@ -553,6 +582,35 @@ async def undo_cleanup(batch: str, db: AsyncSession = Depends(get_db)):
     return {"restored": result.rowcount, "batch": batch}
 
 
+def _under_uploads(path: str) -> bool:
+    """True if a file lives inside PhotoSync's own uploads dir — i.e. a copy we
+    made — as opposed to an in-place folder-import original we must never delete."""
+    try:
+        return Path(path).resolve().is_relative_to(Path(settings.UPLOAD_DIR).resolve())
+    except (ValueError, OSError):
+        return False
+
+
+def _remove_photo_files(photo: Photo) -> None:
+    """Delete a photo's on-disk files when permanently removing it.
+
+    Thumbnails and previews are always PhotoSync-generated, so they're safe to
+    remove. The *original* is only deleted when it's a copy we made (under
+    uploads/) — or when DELETE_IN_PLACE_ORIGINALS is explicitly enabled. This
+    protects folder-imported source files (often the user's only copy) from
+    being destroyed by emptying Trash.
+    """
+    paths = [photo.thumbnail_path, photo.preview_path]
+    if photo.file_path and (settings.DELETE_IN_PLACE_ORIGINALS or _under_uploads(photo.file_path)):
+        paths.append(photo.file_path)
+    for path in paths:
+        if path:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+
+
 @router.post("/empty-trash")
 async def empty_trash(
     older_than_days: int | None = Query(None, ge=0),
@@ -560,7 +618,10 @@ async def empty_trash(
 ):
     """Permanently delete trashed photos (optionally only those older than N days).
 
-    Removes files from disk (original, thumbnail, preview) then the rows.
+    Removes PhotoSync-managed files (thumbnail, preview, and uploaded copies) then
+    the DB rows. In-place folder-import originals are preserved unless
+    DELETE_IN_PLACE_ORIGINALS is set (see config) — so this can never wipe an
+    un-backed-up source library.
     """
     q = select(Photo).where(Photo.deleted_at.is_not(None))
     if older_than_days is not None:
@@ -571,12 +632,7 @@ async def empty_trash(
     photos = (await db.execute(q)).scalars().all()
     removed = 0
     for photo in photos:
-        for path in (photo.file_path, photo.thumbnail_path, photo.preview_path):
-            if path:
-                try:
-                    os.remove(path)
-                except FileNotFoundError:
-                    pass
+        _remove_photo_files(photo)
         await db.delete(photo)
         removed += 1
     await db.commit()
@@ -617,6 +673,12 @@ async def analyze_library(
         clip_available = ai_tagging and embeddings.is_available()
         screenshots_flagged = quality_updated = previews_made = ai_tagged = 0
         for idx, photo in enumerate(photos):
+            if (photo.mime_type or "").startswith("video/"):
+                # Videos have no decodable frames here — nothing to analyze.
+                if (idx + 1) % 50 == 0 or idx + 1 == len(photos):
+                    job.processed = idx + 1
+                    await session.commit()
+                continue
             photo.is_screenshot = detect_screenshot(
                 width=photo.width, height=photo.height,
                 camera_make=photo.camera_make, original_filename=photo.original_filename,
@@ -731,6 +793,38 @@ async def scan_screenshots(db: AsyncSession = Depends(get_db)):
     return {"scanned": len(photos), "updated": updated, "total_screenshots": total_screenshots}
 
 
+# ── Large files (mostly videos) ─────────────────────────────────────────────────
+
+@router.get("/large")
+async def list_large(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """Biggest files first — the space hogs (videos, ProRAW, panoramas)."""
+    offset = (page - 1) * per_page
+    q = (
+        select(Photo)
+        .where(_large_condition(), Photo.deleted_at.is_(None))
+        .options(selectinload(Photo.tags))
+        .order_by(Photo.file_size.desc())
+    )
+    total = (await db.execute(q.with_only_columns(func.count()).order_by(None))).scalar_one()
+    total_bytes = (await db.execute(
+        select(func.coalesce(func.sum(Photo.file_size), 0))
+        .where(_large_condition(), Photo.deleted_at.is_(None))
+    )).scalar_one()
+    result = await db.execute(q.offset(offset).limit(per_page))
+    return {
+        "total": total,
+        "total_bytes": int(total_bytes),
+        "threshold_mb": settings.LARGE_FILE_MB,
+        "page": page,
+        "per_page": per_page,
+        "photos": [_serialize(p) for p in result.scalars().all()],
+    }
+
+
 # ── Duplicate groups ──────────────────────────────────────────────────────────
 
 @router.get("/duplicate-groups")
@@ -834,6 +928,28 @@ async def tag_single_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
     return {"id": photo_id, "tags": tags, "description": photo.ai_description}
 
 
+# ── Original file ─────────────────────────────────────────────────────────────
+
+@router.get("/{photo_id}/original")
+async def get_original(photo_id: int, db: AsyncSession = Depends(get_db)):
+    """Stream the full-resolution original file.
+
+    Works for *both* ingestion paths: browser uploads (stored under uploads/)
+    and folder imports (referenced in place, outside uploads/). Serving through
+    the API means it's covered by the auth guard and resolves regardless of
+    where the file physically lives — unlike the /uploads static mount, which
+    only sees copied-in files.
+    """
+    photo = await db.get(Photo, photo_id)
+    if not photo or not photo.file_path or not Path(photo.file_path).exists():
+        raise HTTPException(status_code=404, detail="Original file not found")
+    return FileResponse(
+        photo.file_path,
+        media_type=photo.mime_type or "application/octet-stream",
+        filename=photo.original_filename,
+    )
+
+
 # ── Single photo (kept last so specific-path routes take priority) ────────────
 
 @router.get("/{photo_id}")
@@ -858,12 +974,7 @@ async def permanent_delete(photo_id: int, db: AsyncSession = Depends(get_db)):
     photo = await db.get(Photo, photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
-    for path in (photo.file_path, photo.thumbnail_path):
-        if path:
-            try:
-                os.remove(path)
-            except FileNotFoundError:
-                pass
+    _remove_photo_files(photo)
     await db.delete(photo)
     await db.commit()
 
@@ -911,12 +1022,14 @@ def _tok() -> str:
 
 def _serialize(p: Photo) -> dict:
     tok = _tok()
+    is_vid = (p.mime_type or "").startswith("video/")
+    is_large = p.file_size is not None and p.file_size >= settings.LARGE_FILE_MB * 1024 * 1024
     return {
         "id": p.id,
         "filename": p.original_filename,
         "thumbnail_url": f"/thumbnails/{Path(p.thumbnail_path).name}{tok}" if p.thumbnail_path else None,
         "preview_url": f"/previews/{Path(p.preview_path).name}{tok}" if p.preview_path else None,
-        "original_url": f"/uploads/{p.filename}{tok}",
+        "original_url": f"/api/photos/{p.id}/original{tok}",
         "width": p.width,
         "height": p.height,
         "taken_at": p.taken_at.isoformat() if p.taken_at else None,
@@ -927,7 +1040,10 @@ def _serialize(p: Photo) -> dict:
         "ai_description": p.ai_description,
         "is_duplicate": p.is_duplicate,
         "is_screenshot": p.is_screenshot,
-        "is_meme": not p.camera_make and not p.camera_model and not p.is_screenshot,
+        "is_meme": not is_vid and not p.camera_make and not p.camera_model and not p.is_screenshot,
+        "is_video": is_vid,
+        "is_large": is_large,
+        "mime_type": p.mime_type,
         "is_dark": p.is_dark,
         "is_overexposed": p.is_overexposed,
         "is_low_res": p.is_low_res,

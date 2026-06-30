@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -80,7 +81,7 @@ async def semantic_search(
     their stored image embeddings. Nothing leaves the machine. Requires the
     optional CLIP model and an analyze pass to have populated embeddings.
     """
-    query_vec = embeddings.embed_text(q)
+    query_vec = await asyncio.to_thread(embeddings.embed_text, q)
     if query_vec is None:
         raise HTTPException(
             status_code=503,

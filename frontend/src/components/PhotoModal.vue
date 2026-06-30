@@ -20,7 +20,15 @@
       <div class="card max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
         <!-- Image -->
         <div class="relative bg-black flex items-center justify-center" style="max-height:60vh">
+          <video
+            v-if="photo.is_video"
+            :src="photo.original_url"
+            controls
+            playsinline
+            class="max-w-full max-h-[60vh] object-contain"
+          />
           <img
+            v-else
             :src="photo.preview_url || photo.original_url"
             :alt="photo.filename"
             class="max-w-full max-h-[60vh] object-contain"

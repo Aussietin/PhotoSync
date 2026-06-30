@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
 
@@ -25,8 +25,19 @@ class Settings(BaseSettings):
     OVEREXPOSED_THRESHOLD: float = 0.92
     LOW_RES_MEGAPIXELS: float = 0.5  # below this is "low res"
 
+    # Files at or above this size are flagged "large" — mostly videos and the
+    # occasional ProRAW/panorama. These are the biggest space hogs in a camera
+    # roll, so they get their own cull category and badge.
+    LARGE_FILE_MB: int = 25
+
     # Trash retention: photos in trash older than this are eligible for auto-empty
     TRASH_RETENTION_DAYS: int = 30
+
+    # SAFETY: when False (default), emptying Trash / permanent-delete only removes
+    # files PhotoSync itself copied into uploads/ — it never deletes a folder-
+    # imported *original* that lives elsewhere on disk. Keep this False unless your
+    # imported folder is a throwaway copy you intend to cull destructively.
+    DELETE_IN_PLACE_ORIGINALS: bool = False
 
     # Optional API token. When set (non-empty), all /api routes require
     # `X-API-Token: <token>`. Empty = open (default, for localhost use).
@@ -42,8 +53,7 @@ class Settings(BaseSettings):
     AI_TAG_THRESHOLD: float = 0.22
     AI_MAX_TAGS: int = 8
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 
 settings = Settings()

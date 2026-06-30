@@ -30,6 +30,21 @@ async def lifespan(app: FastAPI):
             "  ║  Add API_TOKEN=<secret> to backend/.env              ║\n"
             "  ╚══════════════════════════════════════════════════════╝"
         )
+
+    # Warm the optional CLIP model in the background so the first semantic search
+    # or analyze doesn't pay a cold load (torch import + model build is GIL-heavy)
+    # on the request path. Fire-and-forget; a no-op fast path if AI deps aren't
+    # installed. Never blocks startup or fails the server.
+    import asyncio
+
+    async def _warm_ai():
+        try:
+            from services import embeddings
+            await asyncio.to_thread(embeddings.is_available)
+        except Exception:
+            pass
+
+    asyncio.create_task(_warm_ai())
     yield
 
 

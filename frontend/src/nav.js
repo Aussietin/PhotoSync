@@ -16,6 +16,7 @@ export const navGroups = [
       { to: '/screenshots', label: 'Screenshots', icon: '📱', desc: 'Find & clear screen grabs' },
       { to: '/duplicates', label: 'Duplicates', icon: '🔁', desc: 'Near-identical shots' },
       { to: '/bursts', label: 'Bursts', icon: '📸', desc: 'Keep the best of each burst' },
+      { to: '/large', label: 'Large files', icon: '🎬', desc: 'Biggest videos & photos' },
     ],
   },
   {

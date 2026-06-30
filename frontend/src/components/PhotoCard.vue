@@ -13,7 +13,15 @@
       class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
     />
     <div v-else class="flex items-center justify-center w-full h-full text-gray-600 text-3xl">
-      🖼️
+      {{ photo.is_video ? '🎬' : '🖼️' }}
+    </div>
+
+    <!-- Play overlay for videos -->
+    <div
+      v-if="photo.is_video"
+      class="absolute inset-0 flex items-center justify-center pointer-events-none"
+    >
+      <span class="w-9 h-9 rounded-full bg-black/55 flex items-center justify-center text-white text-sm">▶</span>
     </div>
 
     <!-- Selection checkbox -->
@@ -44,6 +52,8 @@
 
     <!-- Status badges -->
     <div class="absolute bottom-1 left-1 flex flex-col gap-0.5 items-start">
+      <span v-if="photo.is_video" class="bg-sky-500 text-white text-xs font-bold px-1 rounded leading-tight">VID</span>
+      <span v-if="photo.is_large" class="bg-pink-600 text-white text-xs font-bold px-1 rounded leading-tight">{{ sizeLabel }}</span>
       <span v-if="photo.is_screenshot" class="bg-purple-500 text-white text-xs font-bold px-1 rounded leading-tight">SS</span>
       <span v-if="photo.is_duplicate" class="bg-yellow-500 text-black text-xs font-bold px-1 rounded leading-tight">DUP</span>
       <span v-if="photo.is_meme" class="bg-orange-600 text-white text-xs font-bold px-1 rounded leading-tight">RCV</span>
@@ -69,6 +79,13 @@ const qualityColor = computed(() => {
   if (q >= 0.7) return 'bg-green-500'
   if (q >= 0.4) return 'bg-yellow-500'
   return 'bg-red-500'
+})
+
+const sizeLabel = computed(() => {
+  const b = props.photo.file_size
+  if (!b) return ''
+  if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)}GB`
+  return `${Math.round(b / 1048576)}MB`
 })
 
 function handleClick() {
