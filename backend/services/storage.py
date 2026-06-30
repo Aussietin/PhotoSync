@@ -6,18 +6,26 @@ from fastapi import UploadFile
 
 from config import settings
 from services import heif_support  # noqa: F401 — registers HEIC opener with Pillow
+from utils.helpers import is_video
 
 logger = logging.getLogger("photosync")
 
 
 async def save_upload(file: UploadFile) -> tuple[Path, Path | None, Path | None, int]:
-    """Persist uploaded file. Returns (file_path, thumb_path, preview_path, size)."""
+    """Persist uploaded file. Returns (file_path, thumb_path, preview_path, size).
+
+    Videos are stored as-is with no thumbnail/preview (we have no frame decoder);
+    they're tracked for size-based culling and shown with a video placeholder.
+    """
     suffix = Path(file.filename or "photo.jpg").suffix.lower()
     stem = uuid.uuid4().hex
     dest = Path(settings.UPLOAD_DIR) / f"{stem}{suffix}"
 
     data = await file.read()
     dest.write_bytes(data)
+
+    if is_video(file.filename or ""):
+        return dest, None, None, len(data)
 
     thumb_path = await _make_thumbnail(dest, stem)
     preview_path = await _make_preview(dest, stem)

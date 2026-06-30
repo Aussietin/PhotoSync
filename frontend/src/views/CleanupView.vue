@@ -26,6 +26,11 @@
         {{ analyzeResult.screenshots }} screenshots,
         {{ analyzeResult.duplicates?.duplicates ?? 0 }} duplicates,
         {{ analyzeResult.quality_recomputed }} quality scores updated.
+        <template v-if="analyzeResult.face_model_available">
+          <br />Found {{ analyzeResult.faces_found }} faces across
+          <router-link to="/people" class="underline font-medium">{{ analyzeResult.people?.total_people ?? 0 }} people</router-link> —
+          name who you know to cull the rest.
+        </template>
       </div>
       <div v-if="analyzing" class="space-y-1.5">
         <div class="flex justify-between text-xs text-gray-500">
@@ -126,6 +131,17 @@
       >
         <template #hint>Images with no camera data — WhatsApp forwards, memes, downloads (not screenshots).</template>
       </CategoryRow>
+      <CategoryRow
+        :label="`Large files (≥ ${summary.large_threshold_mb} MB)`"
+        icon="🎬"
+        :count="summary.large.count"
+        :bytes="summary.large.bytes"
+        :checked="picked.large"
+        @toggle="picked.large = !picked.large"
+        @clean="cleanOne({ large: true }, 'large')"
+      >
+        <template #hint>Videos and other space hogs — usually the biggest reclaimable chunk.</template>
+      </CategoryRow>
 
       <!-- Undo banner -->
       <div v-if="lastBatch" class="card p-3 flex items-center gap-3 bg-brand-500/10 border border-brand-500/30">
@@ -213,7 +229,7 @@ const lastBatch = ref(null)
 const lastDeleted = ref(0)
 const picked = reactive({
   screenshots: true, duplicates: true, low_quality: false,
-  dark: false, overexposed: false, low_res: false, memes: false,
+  dark: false, overexposed: false, low_res: false, memes: false, large: false,
 })
 const { job, track } = useJob()
 
@@ -278,6 +294,7 @@ async function cleanSelected() {
     overexposed: picked.overexposed,
     low_res: picked.low_res,
     memes: picked.memes,
+    large: picked.large,
     max_quality: picked.low_quality ? threshold.value : null,
   }
   const n = summary.value.total_reclaimable.count

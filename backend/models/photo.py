@@ -74,6 +74,7 @@ class Photo(Base):
 
     tags: Mapped[list["Tag"]] = relationship("Tag", back_populates="photo", cascade="all, delete-orphan")
     albums: Mapped[list["Album"]] = relationship("Album", secondary=photo_albums, back_populates="photos")
+    faces: Mapped[list["Face"]] = relationship("Face", back_populates="photo", cascade="all, delete-orphan")
 
 
 class Tag(Base):
@@ -115,6 +116,44 @@ class Job(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Person(Base):
+    """A cluster of faces believed to be the same individual.
+
+    Unnamed + is_known=False is the default for an auto-discovered cluster; the
+    user names the people they recognise and can bulk-cull the rest.
+    """
+    __tablename__ = "persons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_known: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    cover_face_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Running mean of member embeddings (float32 blob) for incremental clustering.
+    centroid: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    face_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Face(Base):
+    """One detected face: its embedding, where it sits, and which person it's in."""
+    __tablename__ = "faces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    photo_id: Mapped[int] = mapped_column(Integer, ForeignKey("photos.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("persons.id", ondelete="SET NULL"), nullable=True, index=True)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)  # float32 ArcFace vector
+    bbox_x: Mapped[int] = mapped_column(Integer, default=0)
+    bbox_y: Mapped[int] = mapped_column(Integer, default=0)
+    bbox_w: Mapped[int] = mapped_column(Integer, default=0)
+    bbox_h: Mapped[int] = mapped_column(Integer, default=0)
+    det_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    crop_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    photo: Mapped["Photo"] = relationship("Photo", back_populates="faces")
 
 
 class DeletionLog(Base):

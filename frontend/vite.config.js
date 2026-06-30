@@ -10,6 +10,7 @@ export default defineConfig({
       '/api': 'http://localhost:8000',
       '/uploads': 'http://localhost:8000',
       '/thumbnails': 'http://localhost:8000',
+      '/previews': 'http://localhost:8000',
     },
   },
 })
