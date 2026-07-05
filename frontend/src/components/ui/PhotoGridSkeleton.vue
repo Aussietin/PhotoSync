@@ -15,7 +15,7 @@
 <script setup>
 import { computed } from 'vue'
 
-const props = defineProps({
+defineProps({
   count: { type: Number, default: 18 },
 })
 

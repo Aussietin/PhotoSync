@@ -91,7 +91,7 @@ onMounted(async () => {
     const thumb = pin.thumbnail_url
       ? `<img src="${pin.thumbnail_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer" />`
       : ''
-    const marker = L.marker([pin.lat, pin.lon])
+    L.marker([pin.lat, pin.lon])
       .addTo(mapInstance)
       .bindPopup(thumb)
       .on('click', () => { selected.value = pin })

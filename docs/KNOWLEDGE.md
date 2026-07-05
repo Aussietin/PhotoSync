@@ -112,7 +112,8 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - [x] Streaming keeper export (built on disk, year/month folders, no 500 cap).
 - [x] Deletion-plan export (CSV/JSON of trashed photos + reasons).
 - [x] In-app archive-and-replace guidance (ExportView).
-- [ ] Actual iOS Shortcut recipe to consume the deletion plan (doc/asset).
+- [x] Actual iOS Shortcut recipe to consume the deletion plan (ExportView: step-by-
+      step Shortcuts-app recipe driven by the deletion-plan CSV).
 
 ### Stage 3 — Make cleanup genuinely "smart" — partial
 - [x] Burst grouping by capture-time proximity + visual similarity (keep-the-best).
@@ -120,6 +121,9 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - [x] **Memes/received images**: no-EXIF + not-screenshot filter catches WhatsApp
       forwards, meme downloads, etc. Pure SQL condition, no new DB column.
       `is_meme` derived field in `_serialize()`, orange "RCV" badge in PhotoCard.
+- [x] **Videos + large files**: video ingestion (`.mov/.mp4/...`, "VID" badge,
+      playable in viewer) and large-file flagging (`LARGE_FILE_MB`, default 25MB)
+      with a dedicated Large Files view + `GET /api/photos/large`.
 - [ ] Documents/receipts category (future).
 - [x] **Real AI tagging + semantic search — fully local, no API, no cost.**
       `services/embeddings.py` wraps a local CLIP model (`sentence-transformers
@@ -132,12 +136,22 @@ and `perceptual_hash`. Albums via a many-to-many junction.
       `pip install -r requirements-ai.txt`; indexed by `POST /photos/analyze`.
       Endpoint: `GET /api/search/semantic?q=…`. **No image or query text ever
       leaves the machine.**
-- [ ] Face grouping (future — local InsightFace/face_recognition).
+- [x] **Face grouping** — local InsightFace/ArcFace (ONNX, CPU, soft dependency):
+      detect + embed faces, cluster into people via incremental running-centroid
+      matching (re-runs never disturb already-named people). New **People** view:
+      name who you know, merge over-split clusters, one-click undoable "trash all
+      photos of this person." `Person`/`Face` tables + migration; `/faces` crop
+      thumbnails served behind the same token-auth as other file routes.
 - [ ] Photo descriptions / captioning (future — local BLIP, heavier model).
 
 ### Stage 4 — Safety, trust & polish ✅
-- [x] Tests: screenshot detector + BK-tree clustering + 36 integration tests
-      covering cleanup, undo, meme filter, photo CRUD, bulk ops (all green).
+- [x] Tests: screenshot detector + BK-tree clustering + 76 integration tests
+      covering cleanup, undo, meme filter, photo CRUD, bulk ops, safety guard,
+      video/large media, People/face-clustering, and batched AI tagging
+      (all green).
+- [x] **CI**: GitHub Actions runs the backend pytest suite and the frontend build
+      on every push/PR to `main` (`.github/workflows/ci.yml`) — previously there
+      was no automated check at all, so a PR's test claims were unverified.
 - [x] **Alembic migrations**: `init_db()` runs `alembic upgrade head` on startup.
       `manage.py` helper for makemigration/stamp/history. Existing DBs: run
       `python manage.py stamp` once, then future migrations apply cleanly.
@@ -146,6 +160,10 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - [x] Optional API token auth (`API_TOKEN` env → `X-API-Token`).
 - [x] **iOS Shortcut recipe** documented in ExportView (step-by-step using the
       Shortcuts app + deletion-plan CSV to delete culled photos on the phone).
+- [x] **Originals safety guard**: permanent-delete/empty-trash only removes
+      PhotoSync-managed files (uploads copies, thumbnails, previews). In-place
+      folder-import originals are never touched unless `DELETE_IN_PLACE_ORIGINALS`
+      is explicitly set (default off) — protects the user's only copy.
 
 ### Bug fixes shipped (were silent production failures, caught by tests)
 - Route shadowing: `GET /cleanup-summary`, `/cleanup-history`, `/screenshots`,
@@ -157,6 +175,13 @@ and `perceptual_hash`. Albums via a many-to-many junction.
 - `POST /undo-cleanup/{batch}` returned 200 for unknown batch tokens; now 404.
 
 ### Known gaps / next
-- Face grouping + photo captioning (both deferred; local models, no cloud).
-- AI indexing runs one image at a time in the analyze loop — batching the CLIP
-  encode would speed up the initial 20k pass (works fine, just not optimal).
+- Photo captioning (deferred; local BLIP, heavier model, no cloud).
+- Documents/receipts cull category (future — likely another zero-shot CLIP label
+  now that the candidate-label plumbing exists).
+- Resumable/parallel browser upload (folder import remains the practical 20k path).
+- Frontend has an `npm run lint` script but no ESLint config file existed — added
+  `.eslintrc.cjs`; lint now also runs in CI.
+- ~~AI indexing ran one image at a time~~ — fixed: CLIP encode is now batched
+  (`services/embeddings.py::embed_images`, `services/ai_tagger.py::tag_photos_batch`)
+  so a 20k analyze pass does far fewer, larger model calls and one DB commit per
+  batch of 16 instead of one per photo.

@@ -34,7 +34,7 @@ import { computed } from 'vue'
 import PhotoCard from './PhotoCard.vue'
 import EmptyState from './ui/EmptyState.vue'
 
-const props = defineProps({
+defineProps({
   photos: { type: Array, default: () => [] },
   selection: { type: Object, default: null },
   selectionMode: { type: Boolean, default: false },

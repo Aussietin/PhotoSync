@@ -94,6 +94,45 @@ def embed_image(path: Path) -> Optional[np.ndarray]:
         return None
 
 
+def embed_images(paths: list[Path]) -> list[Optional[np.ndarray]]:
+    """Batch-embed multiple images in a single model call.
+
+    Far fewer Python/model round-trips than calling ``embed_image`` once per
+    photo — matters when indexing thousands of photos in one analyze pass.
+    Returns a list aligned to ``paths``; entries are ``None`` wherever an image
+    couldn't be opened, or the model isn't available.
+    """
+    model = _get_model()
+    if model is None:
+        return [None] * len(paths)
+
+    from PIL import Image
+
+    images = []
+    ok_indices = []
+    for i, path in enumerate(paths):
+        try:
+            with Image.open(path) as img:
+                images.append(img.convert("RGB"))
+            ok_indices.append(i)
+        except Exception as exc:
+            logger.warning("Could not open image %s: %s", path, exc)
+
+    if not images:
+        return [None] * len(paths)
+
+    try:
+        vecs = model.encode(images, convert_to_numpy=True, normalize_embeddings=True)
+    except Exception as exc:
+        logger.warning("Batch embed failed for %d images: %s", len(images), exc)
+        return [None] * len(paths)
+
+    out: list[Optional[np.ndarray]] = [None] * len(paths)
+    for idx, vec in zip(ok_indices, vecs):
+        out[idx] = vec.astype(np.float32)
+    return out
+
+
 def embed_text(text: str) -> Optional[np.ndarray]:
     """Return the L2-normalised CLIP embedding for a text query, or None."""
     model = _get_model()

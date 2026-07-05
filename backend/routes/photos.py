@@ -659,7 +659,7 @@ async def analyze_library(
         from services.storage import _make_preview
         from services.deduplicator import rescan_duplicates
         from services.bursts import group_bursts
-        from services.ai_tagger import tag_photo
+        from services.ai_tagger import tag_photos_batch
         from services import embeddings, faces
         from services import face_clustering
         from models.photo import Face
@@ -680,6 +680,18 @@ async def analyze_library(
             select(Face.photo_id).distinct()
         )).scalars().all()) if face_available else set()
         screenshots_flagged = quality_updated = previews_made = ai_tagged = faces_found = 0
+        # Photos needing AI tagging are buffered and flushed in batches so the
+        # CLIP model runs one call per batch instead of once per photo — far
+        # fewer Python/GIL round-trips over a 20k-photo pass.
+        AI_BATCH_SIZE = 16
+        ai_batch: list[Photo] = []
+
+        async def _flush_ai_batch() -> None:
+            nonlocal ai_tagged
+            if ai_batch:
+                ai_tagged += await tag_photos_batch(session, ai_batch)
+                ai_batch.clear()
+
         for idx, photo in enumerate(photos):
             if (photo.mime_type or "").startswith("video/"):
                 # Videos have no decodable frames here — nothing to analyze.
@@ -716,12 +728,15 @@ async def analyze_library(
             # Local CLIP tagging + embedding. Re-tag when forced, when the photo
             # has no tags yet, or (model now present) when it lacks an embedding —
             # so heuristic-only photos get upgraded once the model is installed.
+            # Buffered and encoded in batches (see AI_BATCH_SIZE above).
             if ai_tagging:
                 needs_ai = reanalyze or not photo.ai_tags or (
                     clip_available and photo.clip_embedding is None
                 )
-                if needs_ai and await tag_photo(session, photo):
-                    ai_tagged += 1
+                if needs_ai:
+                    ai_batch.append(photo)
+                    if len(ai_batch) >= AI_BATCH_SIZE:
+                        await _flush_ai_batch()
 
             # Local face detection + embedding (clustered into people after the loop).
             if face_available and (reanalyze or photo.id not in faces_done):
@@ -730,6 +745,8 @@ async def analyze_library(
             if (idx + 1) % 50 == 0 or idx + 1 == len(photos):
                 job.processed = idx + 1
                 await session.commit()
+
+        await _flush_ai_batch()
 
         dup_summary = await rescan_duplicates(session)
         burst_summary = await group_bursts(session)

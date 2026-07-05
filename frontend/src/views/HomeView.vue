@@ -88,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { photosApi } from '../api/photos'
 import { useSelection } from '../composables/useSelection'
 import PhotoGrid from '../components/PhotoGrid.vue'
