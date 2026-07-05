@@ -55,6 +55,49 @@ async def tag_photo(db: AsyncSession, photo: Photo) -> list[str]:
     return tags
 
 
+async def tag_photos_batch(db: AsyncSession, photos: list[Photo]) -> int:
+    """Tag multiple photos in one CLIP model call instead of one per photo.
+
+    Used by the bulk analyze pass, where per-photo calls would mean one Python/
+    GIL round-trip into the model for every image in a 20k-photo library. Photos
+    whose image can't be resolved are skipped; photos the model can't embed
+    (unavailable, or a decode failure) fall back to the colour heuristic same as
+    ``tag_photo``. Commits once for the whole batch.
+    """
+    resolved = [(photo, path) for photo in photos if (path := _resolve_image(photo)) is not None]
+    if not resolved:
+        return 0
+
+    paths = [path for _, path in resolved]
+    vecs = await asyncio.to_thread(embeddings.embed_images, paths)
+
+    tagged = 0
+    for (photo, path), vec in zip(resolved, vecs):
+        if vec is not None:
+            photo.clip_embedding = embeddings.to_blob(vec)
+            tags = embeddings.zero_shot_tags(vec)
+            confidence = 0.9
+        else:
+            tags = await _tag_with_heuristics(path)
+            confidence = 0.5
+
+        if not tags:
+            continue
+
+        photo.ai_tags = json.dumps(tags)
+        old_tags = (await db.execute(
+            select(Tag).where(Tag.photo_id == photo.id, Tag.source == "ai")
+        )).scalars().all()
+        for t in old_tags:
+            await db.delete(t)
+        for name in tags:
+            db.add(Tag(photo_id=photo.id, name=name, source="ai", confidence=confidence))
+        tagged += 1
+
+    await db.commit()
+    return tagged
+
+
 def _resolve_image(photo: Photo) -> Path | None:
     """Best available image path for a photo — prefer the small thumbnail."""
     for candidate in (photo.thumbnail_path, photo.file_path):
