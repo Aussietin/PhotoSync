@@ -51,6 +51,9 @@ export const photosApi = {
   listScreenshots: (params) => api.get('/photos/screenshots', { params }),
   scanScreenshots: () => api.post('/photos/scan-screenshots'),
 
+  // Large files (videos / space hogs)
+  listLarge: (params) => api.get('/photos/large', { params }),
+
   // Duplicate groups (returns { job_id } — poll via jobsApi)
   duplicateGroups: () => api.get('/photos/duplicate-groups'),
   rescanDuplicates: () => api.post('/photos/rescan-duplicates'),
@@ -124,4 +127,12 @@ export const albumsApi = {
 
 export const statsApi = {
   get: () => api.get('/stats'),
+}
+
+export const peopleApi = {
+  list: (params = {}) => api.get('/people', { params }),
+  update: (id, body) => api.patch(`/people/${id}`, body),
+  photos: (id, params = {}) => api.get(`/people/${id}/photos`, { params }),
+  trashPhotos: (id) => api.post(`/people/${id}/trash-photos`),
+  merge: (id, otherId) => api.post(`/people/${id}/merge`, { other_id: otherId }),
 }

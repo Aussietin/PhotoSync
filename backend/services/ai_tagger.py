@@ -7,6 +7,7 @@ embedding is also stored on the photo so semantic search is instant. If the
 model isn't installed it falls back to a colour heuristic so the feature still
 produces *something* and never blocks. Nothing is ever sent off the machine.
 """
+import asyncio
 import json
 from pathlib import Path
 
@@ -23,10 +24,12 @@ async def tag_photo(db: AsyncSession, photo: Photo) -> list[str]:
     if image_path is None:
         return []
 
-    vec = embeddings.embed_image(image_path)
+    # CLIP inference is CPU-bound and blocks the event loop; run it in a thread
+    # so progress polling and browsing stay responsive during a big analyze pass.
+    vec = await asyncio.to_thread(embeddings.embed_image, image_path)
     if vec is not None:
         photo.clip_embedding = embeddings.to_blob(vec)
-        tags = embeddings.zero_shot_tags(vec)
+        tags = await asyncio.to_thread(embeddings.zero_shot_tags, vec)
         confidence = 0.9
     else:
         tags = await _tag_with_heuristics(image_path)
