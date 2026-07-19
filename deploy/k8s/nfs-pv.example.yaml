@@ -1,0 +1,27 @@
+# Example: bind photosync-data directly to an NFS export on your NAS, without
+# an NFS provisioner. Edit server/path, then add this file to
+# kustomization.yaml resources and set `storageClassName: ""` plus
+# `volumeName: photosync-nfs` on the PVC in pvc.yaml.
+#
+# CAUTION — SQLite file locking is unreliable over NFS. If /data is NFS, move
+# the DB off the share by adding to the backend Deployment env:
+#   - name: DATABASE_URL
+#     value: sqlite+aiosqlite:////dblocal/photosync.db
+# with /dblocal backed by a small local-disk PVC (or hostPath on a pinned
+# node). Media files (uploads/thumbnails/previews/faces) are fine on NFS.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: photosync-nfs
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - nfsvers=4.1
+  nfs:
+    server: 192.168.1.10
+    path: /volume1/photosync

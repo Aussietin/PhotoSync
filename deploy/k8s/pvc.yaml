@@ -1,0 +1,19 @@
+# All PhotoSync state (SQLite DB + originals + thumbnails + previews + faces)
+# lives on this one claim, mounted at /data in the backend pod.
+#
+# Uses the cluster's default StorageClass (local-path on k3s). To land it on
+# network storage instead, either set storageClassName to your provisioner
+# (nfs-subdir-external-provisioner, longhorn, democratic-csi, ...) or bind it
+# to a manually created PV — see nfs-pv.example.yaml. Keep accessMode RWO:
+# the backend runs as a single replica (SQLite).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: photosync-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 200Gi
+  # storageClassName: nfs-client

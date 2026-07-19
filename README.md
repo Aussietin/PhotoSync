@@ -103,6 +103,23 @@ docker compose up --build
 The compose stack binds the backend to all interfaces, so `API_TOKEN` is
 **required** — compose will refuse to start without it.
 
+### Self-hosted / homelab deployment
+
+PhotoSync runs as a permanent service on homelab gear with the library on
+network storage — see **[docs/HOMELAB.md](docs/HOMELAB.md)** for the full
+guide. In short:
+
+- **NAS / mini-PC (Docker):** `docker compose -f docker-compose.homelab.yml up -d`
+  — prebuilt multi-arch images (amd64 + arm64) from GHCR, all state under one
+  `/data` volume, with NFS/SMB volume recipes included.
+- **Kubernetes (k3s):** `kubectl apply -k deploy/k8s/` — Deployments,
+  Services, PVC, and Ingress, with health probes and an NFS PV example.
+- **One env var for storage:** `DATA_DIR` relocates the SQLite DB and all
+  media dirs onto whatever you mount there; `DATABASE_URL` can split the DB
+  onto local disk when media lives on NFS (SQLite + NFS don't mix).
+- **Import in place from the NAS:** mount your photo share read-only into the
+  backend and folder-import it — no copies made, originals untouchable.
+
 ### Optional: local AI (semantic search + auto-tagging)
 
 AI features are off by default and **fully on-device** — no API key, no cost,

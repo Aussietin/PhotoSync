@@ -1,0 +1,40 @@
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Allow large photo/video uploads through the proxy (the backend enforces
+    # its own MAX_UPLOAD_SIZE_MB per file; this just stops nginx 413-ing at 1MB).
+    client_max_body_size 512m;
+
+    # Proxy API calls to the backend. BACKEND_URL is substituted by the nginx
+    # image entrypoint at container start (default http://backend:8000, set in
+    # the Dockerfile) so the same image works under Docker Compose and
+    # Kubernetes without a rebuild.
+    location /api/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /uploads/ {
+        proxy_pass ${BACKEND_URL};
+    }
+
+    location /thumbnails/ {
+        proxy_pass ${BACKEND_URL};
+    }
+
+    location /previews/ {
+        proxy_pass ${BACKEND_URL};
+    }
+
+    location /faces/ {
+        proxy_pass ${BACKEND_URL};
+    }
+
+    # SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

@@ -1,0 +1,25 @@
+# Routes everything through the frontend, whose nginx proxies /api and media
+# paths to the backend — so a single host rule is all you need. Works as-is
+# with Traefik (k3s default); set ingressClassName for nginx-ingress etc.
+#
+# Uploads are large: if you use nginx-ingress, also add
+#   nginx.ingress.kubernetes.io/proxy-body-size: 512m
+# to the annotations (Traefik has no default body-size limit).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: photosync
+  annotations: {}
+spec:
+  # ingressClassName: traefik
+  rules:
+    - host: photosync.home.arpa   # change to your homelab DNS name
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: photosync-frontend
+                port:
+                  name: http

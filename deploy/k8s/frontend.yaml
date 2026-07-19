@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: photosync-frontend
+  labels:
+    app.kubernetes.io/name: photosync
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: photosync
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: photosync
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/aussietin/photosync-frontend:latest
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            # nginx proxies /api and media routes here (templated at start).
+            - name: BACKEND_URL
+              value: http://photosync-backend:8000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: photosync-frontend
+  labels:
+    app.kubernetes.io/name: photosync
+    app.kubernetes.io/component: frontend
+spec:
+  selector:
+    app.kubernetes.io/name: photosync
+    app.kubernetes.io/component: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

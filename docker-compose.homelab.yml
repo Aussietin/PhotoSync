@@ -1,0 +1,76 @@
+# PhotoSync — homelab / NAS deployment.
+#
+# A self-contained stack for running PhotoSync as a long-lived service on a
+# homelab box (NAS, mini-PC, Proxmox VM, ...) with all state on storage you
+# choose — a local disk, an NFS/SMB share, or a Docker volume.
+#
+#   1. Create a .env file next to this compose file:
+#        API_TOKEN=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+#        # Optional overrides (defaults shown):
+#        # PHOTOSYNC_DATA=photosync_data   # named volume, or an absolute path
+#        # HTTP_PORT=80
+#   2. docker compose -f docker-compose.homelab.yml up -d
+#   3. Open http://<host>:${HTTP_PORT} and paste the token when prompted.
+#
+# Unlike docker-compose.yml (a dev stack that bind-mounts the source tree),
+# this file runs the prebuilt multi-arch images from GHCR (amd64 + arm64), so
+# it works on x86 servers and Raspberry Pi-class ARM boards alike. See
+# docs/HOMELAB.md for NFS/SMB volume recipes and Kubernetes manifests.
+
+name: photosync
+
+services:
+  backend:
+    image: ghcr.io/aussietin/photosync-backend:latest
+    # To build locally instead of pulling from GHCR, comment `image:` and use:
+    # build: ./backend
+    environment:
+      # One directory holds everything: SQLite DB, originals, thumbnails,
+      # previews, face crops. Mount network storage at /data and you're done.
+      - DATA_DIR=/data
+      # SQLite locking is unreliable on NFS. If /data is an NFS share, keep
+      # the DB on local disk by uncommenting this and bind-mounting the path:
+      # - DATABASE_URL=sqlite+aiosqlite:////dblocal/photosync.db
+      - API_TOKEN=${API_TOKEN:?Set API_TOKEN in a .env file next to this compose file (see README)}
+    volumes:
+      - ${PHOTOSYNC_DATA:-photosync_data}:/data
+      # DB-on-local-disk companion to the DATABASE_URL override above:
+      # - /var/lib/photosync:/dblocal
+      #
+      # Mount your existing photo library read-only to folder-import it in
+      # place (Import view → path /library) without copying 20k files:
+      # - /mnt/nas/photos:/library:ro
+    restart: unless-stopped
+    # The backend is intentionally not published on the host; the frontend
+    # proxies /api and media routes. Uncomment to reach the API directly:
+    # ports:
+    #   - '8000:8000'
+
+  frontend:
+    image: ghcr.io/aussietin/photosync-frontend:latest
+    # build: ./frontend
+    ports:
+      - '${HTTP_PORT:-80}:80'
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  photosync_data:
+    # Default: a plain local Docker volume. For network storage, either set
+    # PHOTOSYNC_DATA=/mnt/your-share in .env (bind mount — simplest when the
+    # host already mounts the NAS), or declare the volume over NFS/SMB here:
+    #
+    # driver: local
+    # driver_opts:
+    #   type: nfs
+    #   o: addr=192.168.1.10,rw,nfsvers=4
+    #   device: ":/volume1/photosync"
+    #
+    # SMB/CIFS variant:
+    # driver_opts:
+    #   type: cifs
+    #   o: addr=192.168.1.10,username=photosync,password=...,uid=0,file_mode=0644,dir_mode=0755
+    #   device: "//192.168.1.10/photosync"
