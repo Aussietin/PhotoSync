@@ -4,10 +4,38 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     APP_NAME: str = "PhotoSync"
-    DATABASE_URL: str = "sqlite+aiosqlite:///./photosync.db"
-    UPLOAD_DIR: str = str(Path(__file__).parent / "uploads")
-    THUMBNAIL_DIR: str = str(Path(__file__).parent / "thumbnails")
-    PREVIEW_DIR: str = str(Path(__file__).parent / "previews")
+
+    # ── Storage layout ───────────────────────────────────────────────────────
+    # All persistent state lives under DATA_DIR: the SQLite database plus the
+    # uploads/, thumbnails/, previews/ and faces/ media directories. Point it
+    # at a mounted volume (Docker volume, NFS/SMB share, Kubernetes PVC) and
+    # everything follows — one env var for network storage.
+    # Default: the backend/ source directory (the historical layout).
+    #
+    # Every path below can still be overridden individually. That matters on
+    # NFS: SQLite locking is unreliable over NFS, so the recommended split is
+    # media on the share and DATABASE_URL pointing at local/block storage
+    # (see docs/HOMELAB.md).
+    DATA_DIR: str = str(Path(__file__).parent)
+    DATABASE_URL: str = ""   # default: sqlite db at <DATA_DIR>/photosync.db
+    UPLOAD_DIR: str = ""     # default: <DATA_DIR>/uploads
+    THUMBNAIL_DIR: str = ""  # default: <DATA_DIR>/thumbnails
+    PREVIEW_DIR: str = ""    # default: <DATA_DIR>/previews
+    FACE_DIR: str = ""       # default: <DATA_DIR>/faces (cropped face thumbs)
+
+    def model_post_init(self, __context) -> None:
+        data = Path(self.DATA_DIR)
+        if not self.DATABASE_URL:
+            self.DATABASE_URL = f"sqlite+aiosqlite:///{(data / 'photosync.db').as_posix()}"
+        if not self.UPLOAD_DIR:
+            self.UPLOAD_DIR = str(data / "uploads")
+        if not self.THUMBNAIL_DIR:
+            self.THUMBNAIL_DIR = str(data / "thumbnails")
+        if not self.PREVIEW_DIR:
+            self.PREVIEW_DIR = str(data / "previews")
+        if not self.FACE_DIR:
+            self.FACE_DIR = str(data / "faces")
+
     THUMBNAIL_SIZE: tuple[int, int] = (400, 400)
     PREVIEW_SIZE: tuple[int, int] = (1600, 1600)  # web-friendly JPEG for the viewer
     MAX_UPLOAD_SIZE_MB: int = 50
@@ -65,7 +93,6 @@ class Settings(BaseSettings):
     FACE_MIN_DET_SCORE: float = 0.60       # ignore weak/uncertain detections
     FACE_MATCH_THRESHOLD: float = 0.45     # cosine sim to merge a face into a person
     FACE_MIN_SIZE: int = 40                # ignore tiny faces (px, longest side)
-    FACE_DIR: str = str(Path(__file__).parent / "faces")  # cropped face thumbnails
 
     model_config = SettingsConfigDict(env_file=".env")
 

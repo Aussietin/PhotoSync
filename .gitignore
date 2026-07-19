@@ -31,7 +31,11 @@ build/
 backend/uploads/
 backend/thumbnails/
 backend/previews/
+backend/faces/
 backend/data/
+
+# Kubernetes secret with the real API token (copy of secret.example.yaml)
+deploy/k8s/secret.yaml
 
 # Node
 node_modules/

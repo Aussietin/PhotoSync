@@ -174,6 +174,31 @@ and `perceptual_hash`. Albums via a many-to-many junction.
   trashed photos with tags (async lazy-load not supported in SQLAlchemy 2.x).
 - `POST /undo-cleanup/{batch}` returned 200 for unknown batch tokens; now 404.
 
+### Stage 5 — Homelab / self-hosted deployment ✅
+- [x] **`DATA_DIR`**: one env var relocates all persistent state (SQLite DB +
+      uploads/thumbnails/previews/faces) onto a mounted volume; each path still
+      individually overridable. Key rule: **SQLite locking is unreliable on
+      NFS** — media on the share is fine, but `DATABASE_URL` should point the
+      DB at local/block storage when `/data` is NFS (documented everywhere the
+      option appears).
+- [x] **`docker-compose.homelab.yml`**: standalone production stack (separate
+      from the dev compose) running prebuilt GHCR images, single `/data`
+      volume, NFS/SMB `driver_opts` recipes, read-only `/library` mount for
+      in-place folder import of an existing NAS share.
+- [x] **Kubernetes manifests** (`deploy/k8s/`, kustomize): backend (1 replica +
+      `Recreate` — SQLite must never scale out), frontend, PVC, ingress,
+      token secret, direct-NFS PV example; probes on `/api/health`.
+- [x] **GHCR publish workflow**: multi-arch (amd64 + arm64) backend/frontend
+      images on push to main + version tags — clusters and Pis pull instead of
+      building.
+- [x] **Frontend nginx fixes found on the way**: the proxy config was missing
+      `/faces/` (face thumbnails 404'd through the compose stack) and any
+      `client_max_body_size` (uploads >1MB got nginx's default 413). Backend
+      host is now templated (`BACKEND_URL` env, nginx image envsubst) so one
+      image serves Compose and k8s.
+- [x] docs/HOMELAB.md: storage layout, NFS caveats, both deploy paths, backup
+      guidance (`/data` + DB file is a complete backup), env reference.
+
 ### Known gaps / next
 - Photo captioning (deferred; local BLIP, heavier model, no cloud).
 - Documents/receipts cull category (future — likely another zero-shot CLIP label
