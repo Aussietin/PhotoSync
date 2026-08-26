@@ -40,7 +40,7 @@
 @layer components {
   /* ---- Buttons ---- */
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl font-semibold transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none select-none;
   }
   .btn-primary {
     @apply btn text-white shadow-soft;
@@ -61,10 +61,16 @@
   .btn-danger {
     @apply btn bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/20;
   }
+  .btn-success {
+    @apply btn bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/20;
+  }
 
   /* ---- Surfaces ---- */
   .card {
-    @apply bg-ink-900/80 rounded-2xl overflow-hidden border border-white/5 shadow-card backdrop-blur-sm;
+    @apply bg-ink-900/80 rounded-2xl overflow-hidden border border-white/5 shadow-card backdrop-blur-sm transition-colors;
+  }
+  .card-interactive {
+    @apply card hover:border-white/15 hover:bg-ink-850/90 cursor-pointer;
   }
   .glass {
     @apply bg-ink-900/60 backdrop-blur-xl border border-white/10 rounded-2xl;
@@ -75,18 +81,38 @@
 
   /* ---- Chips / pills ---- */
   .chip {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all select-none;
   }
   .chip-muted {
-    @apply chip bg-white/5 text-gray-300 hover:bg-white/10 border border-white/5;
+    @apply chip bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white border border-white/5;
   }
   .chip-active {
-    @apply chip text-white border border-brand-400/40 bg-brand-500/20;
+    @apply chip text-white border border-brand-400/50 bg-brand-500/25 shadow-sm shadow-brand-500/20;
   }
 
   /* ---- Inputs ---- */
   .input {
-    @apply w-full bg-ink-850/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 transition-colors focus:outline-none focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20;
+    @apply w-full bg-ink-850/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-100 placeholder-gray-500 transition-all focus:outline-none focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20;
+  }
+
+  /* ---- Badges ---- */
+  .badge {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold tracking-wider uppercase backdrop-blur-md;
+  }
+  .badge-video {
+    @apply badge bg-sky-500/90 text-white shadow-sm;
+  }
+  .badge-size {
+    @apply badge bg-pink-600/90 text-white shadow-sm font-mono;
+  }
+  .badge-screenshot {
+    @apply badge bg-purple-500/90 text-white shadow-sm;
+  }
+  .badge-duplicate {
+    @apply badge bg-amber-400/90 text-black shadow-sm;
+  }
+  .badge-meme {
+    @apply badge bg-orange-600/90 text-white shadow-sm;
   }
 
   /* ---- Skeleton shimmer ---- */
@@ -134,4 +160,18 @@
 .page-leave-to {
   opacity: 0;
   transform: translateY(-6px);
+}
+
+/* Triage card swipe animations */
+.swipe-left-enter-active, .swipe-left-leave-active,
+.swipe-right-enter-active, .swipe-right-leave-active {
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.swipe-left-leave-to {
+  opacity: 0;
+  transform: translateX(-120%) rotate(-12deg);
+}
+.swipe-right-leave-to {
+  opacity: 0;
+  transform: translateX(120%) rotate(12deg);
 }

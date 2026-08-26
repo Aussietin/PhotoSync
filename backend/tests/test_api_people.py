@@ -99,3 +99,33 @@ async def test_trash_all_photos_of_a_person(client, db_session):
     assert (await client.get("/api/photos")).json()["total"] == 1
     logs = (await client.get("/api/photos/cleanup-history")).json()["history"]
     assert any(l["reason"].startswith("person:") for l in logs)
+
+
+async def test_trash_all_skips_photos_with_a_known_person(client, db_session):
+    """A photo with a stranger AND a known person (e.g. a group shot) must
+    survive "trash all photos of the stranger" — it needs a manual look, not a
+    blind bulk cull. This is the core safety net for mixed photos."""
+    solo, group = await _seed(db_session, [
+        _photo(file_path="/fake/solo.jpg"),   # only the stranger
+        _photo(file_path="/fake/group.jpg"),  # stranger + someone known
+    ])
+    await _seed(db_session, [
+        Face(photo_id=solo.id, embedding=faces_svc.to_blob(_vec(0)), det_score=0.95),
+        Face(photo_id=group.id, embedding=faces_svc.to_blob(_vec(0, jitter=0.1)), det_score=0.93),
+        Face(photo_id=group.id, embedding=faces_svc.to_blob(_vec(9)), det_score=0.9),
+    ])
+    await face_clustering.assign_unclustered(db_session)
+
+    people = (await client.get("/api/people")).json()["people"]
+    stranger = next(p for p in people if p["photo_count"] == 2)
+    known = next(p for p in people if p["photo_count"] == 1)
+
+    await client.patch(f"/api/people/{known['id']}", json={"name": "Mum"})
+
+    res = (await client.post(f"/api/people/{stranger['id']}/trash-photos")).json()
+    assert res["deleted"] == 1        # only the solo photo
+    assert res["skipped_mixed"] == 1  # the group photo was protected
+
+    live = (await client.get("/api/photos")).json()
+    assert live["total"] == 1
+    assert live["photos"][0]["id"] == group.id  # the mixed photo survived, solo did not

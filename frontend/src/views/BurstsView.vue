@@ -1,59 +1,95 @@
 <template>
-  <div>
-    <div class="flex items-center justify-between mb-5">
+  <div class="space-y-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-ink-900/60 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
       <div>
-        <h1 class="text-xl font-bold">
-          Bursts <span class="text-gray-500 font-normal text-base">({{ groups.length }})</span>
+        <h1 class="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+          <span>Burst Sequences</span>
+          <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-400/20">
+            {{ groups.length }} {{ groups.length === 1 ? 'group' : 'groups' }}
+          </span>
         </h1>
-        <p class="text-xs text-gray-500 mt-0.5">Runs of near-identical shots — sharpest is kept, the rest pre-checked</p>
+        <p class="text-xs text-gray-400 mt-1">
+          Rapid shots taken seconds apart — the sharpest photo is kept by default, with lesser frames pre-checked for deletion.
+        </p>
       </div>
+
       <button
         v-if="groups.length"
-        class="btn-danger text-sm"
+        class="btn-danger text-xs sm:text-sm py-2 px-4 shadow-sm"
         @click="cullAll"
-      >✂️ Cull all (keep best of each)</button>
+      >
+        ✂️ Cull All (Keep Best in Each)
+      </button>
     </div>
 
-    <div v-if="loading" class="space-y-6">
-      <div v-for="i in 2" :key="i" class="card p-4 space-y-3">
-        <Skeleton width="6rem" height="0.7rem" />
-        <div class="grid grid-cols-5 gap-2">
-          <div v-for="j in 5" :key="j" class="skeleton aspect-square rounded-xl" />
+    <div v-if="loading" class="space-y-4">
+      <div v-for="i in 3" :key="i" class="card p-4 space-y-3">
+        <Skeleton width="8rem" height="0.8rem" />
+        <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
+          <div v-for="j in 4" :key="j" class="skeleton aspect-square rounded-xl" />
         </div>
       </div>
     </div>
 
-    <div v-else-if="groups.length" class="space-y-6">
-      <div v-for="group in groups" :key="group.burst_id" class="card p-4">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-xs text-gray-500 font-medium uppercase tracking-wider">
-            {{ group.photos.length }} shots
+    <div v-else-if="groups.length" class="space-y-5">
+      <div v-for="group in groups" :key="group.burst_id" class="card p-4 sm:p-5 space-y-3 bg-ink-900/80 border-white/5 shadow-md">
+        <div class="flex items-center justify-between border-b border-white/5 pb-2.5">
+          <span class="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-brand-400" />
+            Burst ({{ group.photos.length }} shots)
           </span>
-          <button class="text-xs text-red-400 hover:text-red-300" @click="cullGroup(group)">Cull checked</button>
+          <button
+            class="text-xs text-red-400 hover:text-red-300 font-medium hover:underline flex items-center gap-1"
+            @click="cullGroup(group)"
+          >
+            <span>🗑</span> Cull Checked ({{ checkedFor(group).size }})
+          </button>
         </div>
 
-        <div class="grid gap-2" :style="cols(group.photos.length)">
-          <div v-for="p in group.photos" :key="p.id" class="relative">
+        <!-- Burst Photos Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          <div
+            v-for="p in group.photos"
+            :key="p.id"
+            class="group relative flex flex-col gap-1.5"
+          >
             <div
-              class="aspect-square bg-gray-800 rounded-xl overflow-hidden cursor-pointer transition-all"
+              class="aspect-square bg-ink-850 rounded-xl overflow-hidden cursor-pointer transition-all duration-200 border"
               :class="p.id === group.keep_id
-                ? 'ring-2 ring-green-500'
-                : (checkedFor(group).has(p.id) ? 'ring-2 ring-red-500' : 'ring-1 ring-gray-700')"
-              @click="p.id === group.keep_id ? null : toggle(group, p.id)"
+                ? 'border-emerald-500/80 ring-2 ring-emerald-500/30'
+                : (checkedFor(group).has(p.id) ? 'border-red-500/60 opacity-60' : 'border-white/10 hover:border-white/25')"
+              @click="toggle(group, p.id)"
             >
-              <img v-if="p.thumbnail_url" :src="p.thumbnail_url" class="w-full h-full object-cover"
-                   :class="checkedFor(group).has(p.id) && 'opacity-60'" />
+              <img
+                v-if="p.thumbnail_url"
+                :src="p.thumbnail_url"
+                class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+              />
+              <div v-else class="w-full h-full flex items-center justify-center text-2xl text-gray-600">🖼️</div>
+
+              <!-- Badges Overlay -->
+              <div class="absolute top-2 left-2 flex gap-1">
+                <span v-if="p.id === group.keep_id" class="badge bg-emerald-500/90 text-white font-bold text-[10px]">
+                  ★ BEST
+                </span>
+                <span v-else-if="checkedFor(group).has(p.id)" class="badge bg-red-500/90 text-white font-bold text-[10px]">
+                  TRASH
+                </span>
+              </div>
             </div>
-            <div class="mt-1 text-center">
-              <span v-if="p.id === group.keep_id" class="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Keep (best)</span>
-              <span v-else
-                class="text-xs px-2 py-0.5 rounded-full cursor-pointer"
-                :class="checkedFor(group).has(p.id) ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-400'"
+
+            <!-- Card Footer Status -->
+            <div class="flex items-center justify-between text-[11px] px-0.5">
+              <span v-if="p.quality_score != null" class="font-mono text-gray-400">
+                ⭐ {{ Math.round(p.quality_score * 100) }}%
+              </span>
+              <button
+                class="text-[11px] font-semibold transition-colors"
+                :class="checkedFor(group).has(p.id) ? 'text-red-400 hover:text-red-300' : 'text-emerald-400 hover:text-emerald-300'"
                 @click="toggle(group, p.id)"
-              >{{ checkedFor(group).has(p.id) ? 'Delete' : 'Keep' }}</span>
-            </div>
-            <div class="text-xs text-gray-500 text-center mt-0.5">
-              {{ p.quality_score != null ? Math.round(p.quality_score * 100) + '%' : '' }}
+              >
+                {{ checkedFor(group).has(p.id) ? 'Delete' : 'Keep' }}
+              </button>
             </div>
           </div>
         </div>
@@ -63,11 +99,11 @@
     <EmptyState
       v-else
       icon="📸"
-      title="No bursts found"
-      subtitle="Burst sequences are detected during a library analysis."
+      title="No burst sequences detected"
+      subtitle="Burst runs taken in rapid succession will be clustered here when you run a library analysis."
     >
       <template #action>
-        <router-link to="/cleanup" class="btn-soft text-sm">✨ Run Analyze</router-link>
+        <router-link to="/cleanup" class="btn-primary text-sm">✨ Run Library Analysis</router-link>
       </template>
     </EmptyState>
   </div>
@@ -106,6 +142,7 @@ function checkedFor(group) {
 }
 
 function toggle(group, id) {
+  if (id === group.keep_id) return
   const s = new Set(checked[group.burst_id] ?? [])
   s.has(id) ? s.delete(id) : s.add(id)
   checked[group.burst_id] = s
@@ -127,18 +164,14 @@ async function cullAll() {
   const allIds = groups.value.flatMap((g) => [...(checked[g.burst_id] ?? [])])
   if (!allIds.length) return
   const ok = await confirm({
-    title: `Cull ${allIds.length} photos?`,
-    message: 'The sharpest shot in each burst is kept. The rest go to Trash.',
-    confirmText: 'Cull bursts',
+    title: `Cull ${allIds.length} burst photos?`,
+    message: 'The highest-quality shot in each burst is kept. Checked frames will move to Trash.',
+    confirmText: 'Cull Bursts',
     danger: true,
   })
   if (!ok) return
   await photosApi.bulkDelete(allIds)
   success(`Culled ${allIds.length} photos`)
   await load()
-}
-
-function cols(n) {
-  return { gridTemplateColumns: `repeat(${Math.min(n, 5)}, minmax(0, 1fr))` }
 }
 </script>

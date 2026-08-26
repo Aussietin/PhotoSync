@@ -1,54 +1,114 @@
 <template>
-  <div>
-    <!-- Controls bar -->
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-      <h1 class="text-2xl font-bold tracking-tight mr-auto">
-        Library
-        <span class="text-gray-500 font-normal text-base">({{ total.toLocaleString() }})</span>
-      </h1>
+  <div class="space-y-4">
+    <OnboardingBanner />
 
-      <!-- Favorites filter -->
+    <!-- Controls & Filter bar -->
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-ink-900/60 p-3 rounded-2xl border border-white/5 backdrop-blur-md">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+          <span>Library</span>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-400/20 font-mono">
+            {{ total.toLocaleString() }}
+          </span>
+        </h1>
+
+        <!-- Quick filter chips -->
+        <div class="hidden sm:flex items-center gap-1.5 pl-2 border-l border-white/10">
+          <button
+            class="chip"
+            :class="!favoritesOnly && !videosOnly ? 'chip-active' : 'chip-muted'"
+            @click="setFilter('all')"
+          >All</button>
+          <button
+            class="chip"
+            :class="favoritesOnly ? 'chip-active text-red-300 border-red-500/40 bg-red-500/20' : 'chip-muted'"
+            @click="setFilter('favorites')"
+          >♥ Favorites</button>
+          <button
+            class="chip"
+            :class="videosOnly ? 'chip-active text-sky-300 border-sky-500/40 bg-sky-500/20' : 'chip-muted'"
+            @click="setFilter('videos')"
+          >🎬 Videos</button>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap ml-auto">
+        <!-- Sort Dropdown -->
+        <div class="relative">
+          <select
+            v-model="sort"
+            class="bg-ink-850 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-brand-400/60 transition-colors cursor-pointer"
+            @change="reload"
+          >
+            <option value="date_desc">📅 Newest first</option>
+            <option value="date_asc">📅 Oldest first</option>
+            <option value="quality_desc">⭐ Best quality</option>
+            <option value="size_desc">💾 Largest files</option>
+            <option value="size_asc">💾 Smallest files</option>
+            <option value="name_asc">🔤 Name A–Z</option>
+            <option value="created_desc">⏱ Recently added</option>
+          </select>
+        </div>
+
+        <!-- Select Mode Toggle -->
+        <button
+          class="btn-ghost text-xs py-1.5 px-3"
+          :class="sel.selecting.value && 'bg-brand-500/20 border-brand-400/40 text-brand-200'"
+          @click="sel.selecting.value ? sel.clear() : (sel.selecting.value = true)"
+        >
+          {{ sel.selecting.value ? 'Cancel' : 'Select' }}
+        </button>
+
+        <!-- Select All in Mode -->
+        <button
+          v-if="sel.selecting.value"
+          class="btn-ghost text-xs py-1.5 px-3"
+          @click="sel.selectAll(photos.map(p => p.id))"
+        >
+          All ({{ photos.length }})
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile filter chips -->
+    <div class="flex sm:hidden items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
       <button
-        class="text-sm"
-        :class="favoritesOnly ? 'chip text-red-300 bg-red-500/15 border border-red-500/30' : 'chip-muted'"
-        @click="toggleFavorites"
-      >♥ Favorites</button>
-
-      <!-- Sort -->
-      <select
-        v-model="sort"
-        class="bg-ink-850/80 border border-white/10 rounded-full px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-brand-400/60"
-        @change="reload"
-      >
-        <option value="date_desc">Newest first</option>
-        <option value="date_asc">Oldest first</option>
-        <option value="quality_desc">Best quality</option>
-        <option value="size_desc">Largest files</option>
-        <option value="size_asc">Smallest files</option>
-        <option value="name_asc">Name A–Z</option>
-        <option value="created_desc">Recently added</option>
-      </select>
-
-      <!-- Select mode toggle -->
-      <button
-        class="text-sm"
-        :class="sel.selecting.value ? 'chip-active' : 'chip-muted'"
-        @click="sel.selecting.value ? sel.clear() : (sel.selecting.value = true)"
-      >Select</button>
-
-      <!-- Select all -->
-      <button
-        v-if="sel.selecting.value"
-        class="chip-muted text-sm"
-        @click="sel.selectAll(photos.map(p => p.id))"
+        class="chip"
+        :class="!favoritesOnly && !videosOnly ? 'chip-active' : 'chip-muted'"
+        @click="setFilter('all')"
       >All</button>
+      <button
+        class="chip"
+        :class="favoritesOnly ? 'chip-active text-red-300 border-red-500/40 bg-red-500/20' : 'chip-muted'"
+        @click="setFilter('favorites')"
+      >♥ Favorites</button>
+      <button
+        class="chip"
+        :class="videosOnly ? 'chip-active text-sky-300 border-sky-500/40 bg-sky-500/20' : 'chip-muted'"
+        @click="setFilter('videos')"
+      >🎬 Videos</button>
     </div>
 
     <PhotoGridSkeleton v-if="loading && !photos.length" :count="24" />
 
+    <EmptyState
+      v-else-if="!photos.length"
+      icon="📷"
+      title="No photos to display"
+      :subtitle="favoritesOnly ? 'You haven’t favorited any photos yet.' : videosOnly ? 'No videos found in your library.' : 'Upload a batch from your phone or import a folder to get started.'"
+    >
+      <template #action>
+        <div v-if="!favoritesOnly && !videosOnly" class="flex gap-2 justify-center">
+          <router-link to="/upload" class="btn-primary text-sm">⬆ Upload from phone</router-link>
+          <router-link to="/import" class="btn-ghost text-sm">📥 Import a folder</router-link>
+        </div>
+        <button v-else class="btn-ghost text-sm" @click="setFilter('all')">View all photos</button>
+      </template>
+    </EmptyState>
+
     <PhotoGrid
       v-else
-      :photos="photos"
+      :photos="filteredPhotos"
       :selection="sel"
       :selection-mode="sel.selecting.value"
       @select="openModal"
@@ -57,7 +117,7 @@
 
     <!-- Infinite-scroll loading footer -->
     <div v-if="loading && photos.length" class="flex justify-center py-6">
-      <Spinner :size="22" label="Loading more…" />
+      <Spinner :size="22" label="Loading more photos…" />
     </div>
 
     <div ref="sentinel" class="h-10" />
@@ -67,7 +127,7 @@
       v-if="modalPhoto"
       :photo="modalPhoto"
       :has-prev="modalIndex > 0"
-      :has-next="modalIndex < photos.length - 1"
+      :has-next="modalIndex < filteredPhotos.length - 1"
       @close="modalPhoto = null"
       @delete="softDelete"
       @toggle-favorite="toggleFavorite"
@@ -88,14 +148,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { photosApi } from '../api/photos'
 import { useSelection } from '../composables/useSelection'
 import PhotoGrid from '../components/PhotoGrid.vue'
 import PhotoGridSkeleton from '../components/ui/PhotoGridSkeleton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 import Spinner from '../components/ui/Spinner.vue'
 import PhotoModal from '../components/PhotoModal.vue'
 import BatchToolbar from '../components/BatchToolbar.vue'
+import OnboardingBanner from '../components/OnboardingBanner.vue'
 import { useToast } from '../composables/useToast'
 import { useConfirm } from '../composables/useConfirm'
 
@@ -108,10 +170,18 @@ const page = ref(1)
 const loading = ref(false)
 const sort = ref('date_desc')
 const favoritesOnly = ref(false)
+const videosOnly = ref(false)
 const modalPhoto = ref(null)
 const modalIndex = ref(-1)
 const sentinel = ref(null)
 const sel = useSelection()
+
+const filteredPhotos = computed(() => {
+  if (videosOnly.value) {
+    return photos.value.filter((p) => p.is_video)
+  }
+  return photos.value
+})
 
 async function load(reset = false) {
   if (loading.value) return
@@ -131,20 +201,40 @@ async function load(reset = false) {
   }
 }
 
-function reload() { page.value = 1; sel.clear(); load(true) }
-function toggleFavorites() { favoritesOnly.value = !favoritesOnly.value; reload() }
+function reload() {
+  page.value = 1
+  sel.clear()
+  load(true)
+}
+
+function setFilter(type) {
+  if (type === 'favorites') {
+    favoritesOnly.value = true
+    videosOnly.value = false
+  } else if (type === 'videos') {
+    favoritesOnly.value = false
+    videosOnly.value = true
+  } else {
+    favoritesOnly.value = false
+    videosOnly.value = false
+  }
+  reload()
+}
 
 function openModal(photo) {
-  if (sel.selecting.value) { sel.toggle(photo.id); return }
-  modalIndex.value = photos.value.findIndex((p) => p.id === photo.id)
+  if (sel.selecting.value) {
+    sel.toggle(photo.id)
+    return
+  }
+  modalIndex.value = filteredPhotos.value.findIndex((p) => p.id === photo.id)
   modalPhoto.value = photo
 }
 
 function navigate(dir) {
   const next = modalIndex.value + dir
-  if (next < 0 || next >= photos.value.length) return
+  if (next < 0 || next >= filteredPhotos.value.length) return
   modalIndex.value = next
-  modalPhoto.value = photos.value[next]
+  modalPhoto.value = filteredPhotos.value[next]
 }
 
 async function softDelete(id) {
@@ -152,6 +242,7 @@ async function softDelete(id) {
   photos.value = photos.value.filter((p) => p.id !== id)
   total.value--
   modalPhoto.value = null
+  success('Moved photo to Trash')
 }
 
 async function toggleFavorite(id) {

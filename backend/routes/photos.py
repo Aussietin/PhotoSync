@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 import zipfile
@@ -23,6 +24,7 @@ from services.deduplicator import find_duplicate
 from utils.helpers import is_image, is_media, is_video, guess_mime
 
 router = APIRouter()
+logger = logging.getLogger("photosync")
 
 SORT_MAP = {
     "date_desc": Photo.taken_at.desc().nullslast(),
@@ -127,39 +129,50 @@ async def import_folder(body: FolderImportIn):
         await session.commit()
 
         known = set((await session.execute(select(Photo.file_path))).scalars().all())
-        imported, skipped = 0, 0
+        imported, skipped, failed = 0, 0, 0
+        failures: list[dict] = []  # bounded sample surfaced in the job result
 
         for idx, file_path in enumerate(files):
-            if str(file_path) not in known:
-                if is_video(file_path.name):
-                    # No frame decoder — index videos for size-based culling only.
-                    session.add(Photo(
-                        filename=file_path.name,
-                        original_filename=file_path.name,
-                        file_path=str(file_path),
-                        file_size=file_path.stat().st_size,
-                        mime_type=guess_mime(file_path.name),
-                        **_photo_fields({}),
-                    ))
-                else:
-                    metadata = await process_photo(file_path, original_filename=file_path.name)
-                    stem = uuid.uuid4().hex
-                    thumb_path = await _make_thumbnail(file_path, stem)
-                    preview_path = await _make_preview(file_path, stem)
-                    session.add(Photo(
-                        filename=file_path.name,
-                        original_filename=file_path.name,
-                        file_path=str(file_path),
-                        thumbnail_path=str(thumb_path) if thumb_path else None,
-                        preview_path=str(preview_path) if preview_path else None,
-                        file_size=file_path.stat().st_size,
-                        mime_type=guess_mime(file_path.name),
-                        **_photo_fields(metadata),
-                    ))
-                known.add(str(file_path))
-                imported += 1
-            else:
+            if str(file_path) in known:
                 skipped += 1
+            else:
+                try:
+                    if is_video(file_path.name):
+                        # No frame decoder — index videos for size-based culling only.
+                        session.add(Photo(
+                            filename=file_path.name,
+                            original_filename=file_path.name,
+                            file_path=str(file_path),
+                            file_size=file_path.stat().st_size,
+                            mime_type=guess_mime(file_path.name),
+                            **_photo_fields({}),
+                        ))
+                    else:
+                        metadata = await process_photo(file_path, original_filename=file_path.name)
+                        stem = uuid.uuid4().hex
+                        thumb_path = await _make_thumbnail(file_path, stem)
+                        preview_path = await _make_preview(file_path, stem)
+                        session.add(Photo(
+                            filename=file_path.name,
+                            original_filename=file_path.name,
+                            file_path=str(file_path),
+                            thumbnail_path=str(thumb_path) if thumb_path else None,
+                            preview_path=str(preview_path) if preview_path else None,
+                            file_size=file_path.stat().st_size,
+                            mime_type=guess_mime(file_path.name),
+                            **_photo_fields(metadata),
+                        ))
+                    known.add(str(file_path))
+                    imported += 1
+                except Exception as exc:
+                    # A single unreadable/locked/still-copying file must never abort
+                    # the whole 20k-file job. Log it, count it, move on. It's NOT
+                    # added to `known`, so re-running Import on this folder retries
+                    # it automatically once it's actually readable.
+                    logger.warning("Import failed for %s: %s", file_path, exc)
+                    failed += 1
+                    if len(failures) < 25:
+                        failures.append({"filename": file_path.name, "error": str(exc)})
 
             # Commit + report progress in batches to keep the UI moving.
             if (idx + 1) % 50 == 0 or idx + 1 == len(files):
@@ -167,8 +180,14 @@ async def import_folder(body: FolderImportIn):
                 await session.commit()
 
         dup_summary = await rescan_duplicates(session) if imported else {"duplicates": 0}
-        return {"imported": imported, "skipped": skipped,
-                "duplicates_found": dup_summary.get("duplicates", 0)}
+        return {
+            "scanned": len(files),
+            "imported": imported,
+            "skipped": skipped,
+            "failed": failed,
+            "failed_files": failures,
+            "duplicates_found": dup_summary.get("duplicates", 0),
+        }
 
     from services.jobs import start_job
     job_id = await start_job("import", runner, total=len(files))
