@@ -18,28 +18,50 @@ from typing import Awaitable, Callable
 
 from sqlalchemy import select, update
 
-from database import AsyncSessionLocal
+import database
 from models.photo import Job
 
 # runner(session, job) -> dict result; runner updates job.processed as it goes.
 JobRunner = Callable[["AsyncSession", Job], Awaitable[dict]]
 
+# Tracks each job's in-flight asyncio task so it can be awaited directly rather
+# than only polled — used by tests to avoid racing the job's own DB session
+# with a concurrent poll (harmless in production, where each request gets its
+# own real DB connection; only the shared single-connection test DB is at risk).
+_tasks: dict[int, asyncio.Task] = {}
+
 
 async def start_job(kind: str, runner: JobRunner, total: int = 0) -> int:
     """Create a Job, schedule it on the event loop, return the job id."""
-    async with AsyncSessionLocal() as session:
+    # Looked up via the `database` module (not imported by name) so tests can
+    # swap database.AsyncSessionLocal for an isolated session — background jobs
+    # would otherwise always hit the real on-disk DB regardless of test overrides.
+    async with database.AsyncSessionLocal() as session:
         job = Job(kind=kind, status="pending", total=total)
         session.add(job)
         await session.commit()
         await session.refresh(job)
         job_id = job.id
 
-    asyncio.create_task(_run(job_id, runner))
+    task = asyncio.create_task(_run(job_id, runner))
+    _tasks[job_id] = task
+    task.add_done_callback(lambda _t, jid=job_id: _tasks.pop(jid, None))
     return job_id
 
 
+async def wait_for_job(job_id: int) -> None:
+    """Await a job's background task directly if it's still tracked.
+
+    No-op for a job that's already finished (or unknown). Primarily for tests
+    that need deterministic completion without polling.
+    """
+    task = _tasks.get(job_id)
+    if task is not None:
+        await task
+
+
 async def _run(job_id: int, runner: JobRunner) -> None:
-    async with AsyncSessionLocal() as session:
+    async with database.AsyncSessionLocal() as session:
         job = await session.get(Job, job_id)
         if job is None:
             return
@@ -61,7 +83,7 @@ async def _run(job_id: int, runner: JobRunner) -> None:
 
 async def reap_stale_jobs() -> None:
     """Mark any jobs left 'running'/'pending' by a crash as errored (run at startup)."""
-    async with AsyncSessionLocal() as session:
+    async with database.AsyncSessionLocal() as session:
         await session.execute(
             update(Job)
             .where(Job.status.in_(["running", "pending"]))

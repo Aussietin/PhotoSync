@@ -20,6 +20,12 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from database import Base, get_db
 from config import settings
+import models.photo  # noqa: F401 — registers every table on Base.metadata before
+# create_all() below. Without this explicit import, Base.metadata only has
+# whatever tables happen to already be registered from OTHER test modules'
+# own imports — fine when running the full suite (some other file imports
+# models.photo first), but a test file run in isolation would get an empty
+# schema and fail with "no such table: X".
 
 # The FastAPI app mounts static-file dirs at import time — they must exist.
 # Create them now (they're git-ignored); tests never write real files here.
@@ -53,6 +59,7 @@ async def db_session(db_engine):
 async def client(db_engine):
     """AsyncClient wired to the FastAPI app with an isolated in-memory DB."""
     import app as app_module
+    import database as database_module
 
     Session = async_sessionmaker(db_engine, expire_on_commit=False)
 
@@ -65,6 +72,12 @@ async def client(db_engine):
     with (
         patch("app.init_db", new_callable=AsyncMock),
         patch("services.jobs.reap_stale_jobs", new_callable=AsyncMock),
+        # Background jobs (import/analyze/rescan) look up database.AsyncSessionLocal
+        # at call time rather than importing it by name, specifically so this patch
+        # can redirect them to the same isolated in-memory DB as the rest of the
+        # test. Without this, a test hitting /import-folder or /analyze would have
+        # its background task silently write into the real on-disk photosync.db.
+        patch.object(database_module, "AsyncSessionLocal", Session),
     ):
         async with AsyncClient(
             transport=ASGITransport(app=app_module.app), base_url="http://test"

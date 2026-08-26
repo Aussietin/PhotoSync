@@ -1,25 +1,69 @@
 <template>
-  <div>
-    <div class="flex items-center gap-3 mb-5">
-      <router-link to="/albums" class="text-gray-500 hover:text-gray-300 text-lg">←</router-link>
-      <div class="flex-1 min-w-0">
-        <h1 class="text-xl font-bold truncate">{{ album?.name }}</h1>
-        <p v-if="album?.description" class="text-sm text-gray-500 truncate">{{ album.description }}</p>
+  <div class="space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-ink-900/60 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
+      <div class="flex items-center gap-3">
+        <router-link to="/albums" class="btn-ghost text-xs py-1.5 px-3">← Back to Albums</router-link>
+        <div class="min-w-0">
+          <h1 class="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+            <span>{{ album?.name }}</span>
+            <span v-if="photos.length" class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-400/20">
+              {{ photos.length }} items
+            </span>
+          </h1>
+          <p v-if="album?.description" class="text-xs text-gray-400 mt-0.5 truncate">{{ album.description }}</p>
+        </div>
       </div>
-      <button class="btn-danger text-sm" @click="deleteAlbum">🗑 Delete album</button>
+
+      <div class="flex items-center gap-2 flex-wrap ml-auto">
+        <button class="btn-danger text-xs sm:text-sm py-2 px-4 shadow-sm" @click="deleteAlbum">
+          🗑 Delete Album
+        </button>
+      </div>
     </div>
 
     <PhotoGridSkeleton v-if="loading" :count="18" />
 
-    <PhotoGrid
+    <template v-else-if="photos.length">
+      <!-- Batch Controls Bar -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <button
+            class="btn-ghost text-xs py-1.5 px-3"
+            :class="sel.selecting.value && 'bg-brand-500/20 border-brand-400/40 text-brand-200'"
+            @click="sel.selecting.value ? sel.clear() : (sel.selecting.value = true)"
+          >
+            {{ sel.selecting.value ? 'Cancel' : 'Select' }}
+          </button>
+          <button
+            v-if="sel.selecting.value"
+            class="btn-ghost text-xs py-1.5 px-3"
+            @click="sel.selectAll(photos.map(p => p.id))"
+          >
+            Select All ({{ photos.length }})
+          </button>
+        </div>
+      </div>
+
+      <PhotoGrid
+        :photos="photos"
+        :selection="sel"
+        :selection-mode="sel.selecting.value"
+        :show-upload-hint="false"
+        @select="openModal"
+        @toggle-favorite="toggleFavorite"
+      />
+    </template>
+
+    <EmptyState
       v-else
-      :photos="photos"
-      :selection="sel"
-      :selection-mode="sel.selecting.value"
-      :show-upload-hint="false"
-      @select="openModal"
-      @toggle-favorite="toggleFavorite"
-    />
+      icon="🗂️"
+      title="This album is empty"
+      subtitle="Select photos in your main library or search results to add them here."
+    >
+      <template #action>
+        <router-link to="/" class="btn-primary text-sm">Browse Library</router-link>
+      </template>
+    </EmptyState>
 
     <PhotoModal
       v-if="modalPhoto"
@@ -55,6 +99,7 @@ import { albumsApi, photosApi } from '../api/photos'
 import { useSelection } from '../composables/useSelection'
 import PhotoGrid from '../components/PhotoGrid.vue'
 import PhotoGridSkeleton from '../components/ui/PhotoGridSkeleton.vue'
+import EmptyState from '../components/ui/EmptyState.vue'
 import PhotoModal from '../components/PhotoModal.vue'
 import BatchToolbar from '../components/BatchToolbar.vue'
 import { useToast } from '../composables/useToast'
@@ -102,6 +147,7 @@ async function removeFromAlbum(photoId) {
   await albumsApi.removePhoto(route.params.id, photoId)
   photos.value = photos.value.filter((p) => p.id !== photoId)
   modalPhoto.value = null
+  success('Removed from album')
 }
 
 async function toggleFavorite(id) {
@@ -119,9 +165,9 @@ async function updateNotes(id, notes) {
 
 async function deleteAlbum() {
   const ok = await confirm({
-    title: `Delete “${album.value?.name}”?`,
-    message: 'The album is removed, but your photos stay in the library.',
-    confirmText: 'Delete album',
+    title: `Delete album “${album.value?.name}”?`,
+    message: 'The album organization will be removed, but all your underlying photos will remain safely in the library.',
+    confirmText: 'Delete Album',
     danger: true,
   })
   if (!ok) return
@@ -134,19 +180,23 @@ async function bulkFavorite() {
   await photosApi.bulkFavorite(sel.ids.value)
   photos.value.forEach((p) => { if (sel.selected.value.has(p.id)) p.is_favorite = true })
   sel.clear()
+  success('Added selection to Favorites')
 }
 
 async function bulkRemove() {
   await Promise.all(sel.ids.value.map((id) => albumsApi.removePhoto(route.params.id, id)))
   photos.value = photos.value.filter((p) => !sel.selected.value.has(p.id))
   sel.clear()
+  success('Removed selected photos from album')
 }
 
 async function bulkDownload() {
   const { data } = await photosApi.downloadZip(sel.ids.value)
   const url = URL.createObjectURL(data)
   const a = document.createElement('a')
-  a.href = url; a.download = `${album.value?.name ?? 'album'}.zip`; a.click()
+  a.href = url
+  a.download = `${album.value?.name ?? 'album'}.zip`
+  a.click()
   URL.revokeObjectURL(url)
 }
 </script>

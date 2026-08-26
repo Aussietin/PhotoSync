@@ -1,112 +1,86 @@
 <template>
   <div class="max-w-2xl mx-auto space-y-6">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">Export</h1>
-      <p class="text-sm text-gray-500 mt-1">
-        Get your cleaned library out. PhotoSync can't delete from your iPhone directly,
-        so the workflow is: clean here → export the keepers → make this your master → wipe/re-sync the phone.
+    <div class="bg-ink-900/60 p-5 rounded-2xl border border-white/5 backdrop-blur-md">
+      <h1 class="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+        <span>Export Library & Keepers</span>
+      </h1>
+      <p class="text-xs text-gray-400 mt-1">
+        Export your organized keeper library or download deletion plans to sync culls back to devices.
       </p>
     </div>
 
     <!-- Keepers export -->
-    <div class="card p-5 space-y-4">
+    <div class="card p-5 space-y-4 bg-ink-900/80 border-white/5 shadow-md">
       <div>
-        <h2 class="font-semibold">Download keepers</h2>
-        <p class="text-xs text-gray-500 mt-0.5">
-          A ZIP of your live, non-duplicate photos, organised into year/month folders.
-          Streamed from disk, so large libraries are fine.
+        <h2 class="font-bold text-sm text-gray-100 flex items-center gap-2">
+          <span>📦</span> Download Keepers Archive
+        </h2>
+        <p class="text-xs text-gray-400 mt-1">
+          A clean ZIP of your live, non-duplicate photos organised into Year/Month subfolders. Streamed on-the-fly from disk.
         </p>
       </div>
 
-      <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
-        <input v-model="excludeScreenshots" type="checkbox" class="accent-brand-500" />
-        Exclude screenshots
-      </label>
-      <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
-        <input v-model="excludeLowQuality" type="checkbox" class="accent-brand-500" />
-        Exclude low-quality (blurry/dark) photos
-      </label>
+      <div class="space-y-2 text-xs text-gray-300">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input v-model="excludeScreenshots" type="checkbox" class="accent-brand-500 rounded" />
+          <span>Exclude screenshots from ZIP</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input v-model="excludeLowQuality" type="checkbox" class="accent-brand-500 rounded" />
+          <span>Exclude low-quality / blurry frames</span>
+        </label>
+      </div>
 
-      <a :href="keepersHref" class="btn-primary inline-flex text-sm">⬇ Download keepers ZIP</a>
+      <a :href="keepersHref" class="btn-primary inline-flex text-xs py-2.5 px-4 font-semibold shadow-glow">
+        ⬇ Download Keepers ZIP
+      </a>
     </div>
 
     <!-- Deletion plan -->
-    <div class="card p-5 space-y-3">
+    <div class="card p-5 space-y-3 bg-ink-900/80 border-white/5 shadow-md">
       <div>
-        <h2 class="font-semibold">Deletion plan</h2>
-        <p class="text-xs text-gray-500 mt-0.5">
-          A list of everything currently in Trash — filename + reason — so you can delete
-          the same photos on your phone (manually or via an iOS Shortcut).
+        <h2 class="font-bold text-sm text-gray-100 flex items-center gap-2">
+          <span>📋</span> Device Deletion Plan
+        </h2>
+        <p class="text-xs text-gray-400 mt-1">
+          Structured list of culled photos currently in Trash (filename + reason) to delete matching shots from your phone with an iOS Shortcut.
         </p>
       </div>
       <div class="flex gap-2">
-        <a :href="csvHref" class="btn-soft text-sm">⬇ CSV</a>
-        <a :href="jsonHref" class="btn-soft text-sm">⬇ JSON</a>
+        <a :href="csvHref" class="btn-ghost text-xs py-2 px-3">⬇ Download CSV</a>
+        <a :href="jsonHref" class="btn-ghost text-xs py-2 px-3">⬇ Download JSON</a>
       </div>
     </div>
 
-    <!-- Workflow guidance -->
-    <div class="card p-5 space-y-2">
-      <h2 class="font-semibold">Recommended workflow</h2>
-      <ol class="text-sm text-gray-400 space-y-1.5 list-decimal list-inside">
-        <li>Dump your full camera roll to a folder (Finder / Image Capture / iCloud download), then <router-link to="/import" class="text-brand-400 hover:underline">Import</router-link> it.</li>
-        <li>Run <router-link to="/cleanup" class="text-brand-400 hover:underline">Smart Cleanup</router-link> and <router-link to="/triage" class="text-brand-400 hover:underline">Triage</router-link> to send junk to Trash.</li>
-        <li>Download the keepers ZIP above — this becomes your clean master archive.</li>
-        <li>On the phone: use the deletion plan + iOS Shortcut below to remove culled photos.</li>
+    <!-- Recommended Workflow Card -->
+    <div class="card p-5 space-y-3 bg-ink-900/80 border-white/5 text-xs shadow-md">
+      <h2 class="font-bold text-gray-100 flex items-center gap-2">
+        <span>✨</span> Recommended Culling & Archiving Workflow
+      </h2>
+      <ol class="text-gray-300 space-y-2 list-decimal list-inside">
+        <li>Transfer or import your camera roll to PhotoSync.</li>
+        <li>Run <router-link to="/cleanup" class="text-brand-300 underline font-medium">Smart Cleanup</router-link> & <router-link to="/triage" class="text-brand-300 underline font-medium">Triage</router-link> to review and queue clutter for Trash.</li>
+        <li>Download the keepers ZIP archive above — this is your permanent clean master library.</li>
+        <li>On iPhone: run the deletion plan Shortcut below to free up GBs on your phone.</li>
       </ol>
-      <p class="text-xs text-gray-600 pt-1">
-        Deleting from the iOS camera roll requires the Photos app or an iOS Shortcut —
-        no web app (including this one) can do it for you.
+    </div>
+
+    <!-- iOS Shortcut Recipe -->
+    <div class="card p-5 space-y-3 bg-ink-900/80 border-white/5 shadow-md text-xs">
+      <h2 class="font-bold text-gray-100 flex items-center gap-2">
+        <span>📱</span> iOS Shortcut Recipe — Delete From Camera Roll
+      </h2>
+      <p class="text-gray-400">
+        Build this iOS Shortcut once; tap it anytime on your iPhone to execute the deletion plan CSV directly.
       </p>
-    </div>
 
-    <!-- iOS Shortcut recipe -->
-    <div class="card p-5 space-y-4">
-      <div>
-        <h2 class="font-semibold">iOS Shortcut — delete from camera roll</h2>
-        <p class="text-xs text-gray-500 mt-0.5">
-          Build this Shortcut once; tap it on your phone to act on the deletion plan CSV.
-        </p>
-      </div>
-
-      <ol class="text-sm text-gray-300 space-y-3 list-decimal list-inside marker:text-gray-600">
-        <li>
-          <span class="font-medium">Download the deletion plan CSV</span> (button above) and
-          save it to <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">Files → iCloud Drive</span>
-          so your iPhone can find it.
-        </li>
-        <li>
-          Open <span class="font-medium">Shortcuts</span> on your iPhone → tap <span class="font-medium">+</span> to create a new shortcut.
-        </li>
-        <li>
-          Add action: <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">Get File</span>
-          → choose the CSV from iCloud Drive.
-        </li>
-        <li>
-          Add action: <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">Split Text</span>
-          → separator <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">New Lines</span>.
-        </li>
-        <li>
-          Add action: <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">Repeat with Each</span>
-          over the split lines.
-          <ul class="mt-1.5 ml-4 space-y-1.5 list-disc marker:text-gray-600">
-            <li>Add <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">If</span>: <em>Repeat Item</em> does not contain <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">filename</span> (skip the CSV header row).</li>
-            <li>Add <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">Split Text</span>: split <em>Repeat Item</em> by <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">,</span> → get <strong>Item at Index 1</strong> (that's the filename column).</li>
-            <li>Add <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">Find Photos</span> where <em>Filename</em> is the split result.</li>
-            <li>Add <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">Delete Photos</span> — iOS will ask for permission the first time.</li>
-          </ul>
-        </li>
-        <li>
-          Name the shortcut <span class="font-mono text-xs bg-gray-800 px-1.5 py-0.5 rounded">PhotoSync Cull</span> and add it to your home screen for one-tap use.
-        </li>
+      <ol class="text-gray-300 space-y-2 list-decimal list-inside">
+        <li>Download the CSV deletion plan and save to <strong>Files → iCloud Drive</strong>.</li>
+        <li>Open <strong>Shortcuts</strong> on your iPhone → tap <strong>+</strong> to create a new shortcut.</li>
+        <li>Add action: <code>Get File</code> → pick the deletion plan CSV.</li>
+        <li>Add action: <code>Split Text</code> by New Lines.</li>
+        <li>Add action: <code>Repeat with Each</code>: filter by filename column and call <code>Delete Photos</code>.</li>
       </ol>
-
-      <div class="text-xs text-gray-600 bg-gray-900/50 rounded-xl p-3 space-y-1">
-        <p><strong class="text-gray-500">Tips:</strong></p>
-        <p>• The CSV column order is: <span class="font-mono">filename, reason, deleted_at, file_size</span></p>
-        <p>• <em>Find Photos</em> matches by original filename — if iOS renamed your photo it may not find it. The archive-and-replace method (sync keepers back to phone) is more reliable.</p>
-        <p>• Run Triage or Cleanup first and review Trash before running the Shortcut — once deleted from iOS they go to the <em>Recently Deleted</em> album (30-day recovery window).</p>
-      </div>
     </div>
   </div>
 </template>

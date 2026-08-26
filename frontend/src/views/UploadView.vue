@@ -1,44 +1,72 @@
 <template>
-  <div class="max-w-xl mx-auto">
-    <h1 class="text-2xl font-bold tracking-tight mb-6">Upload Photos</h1>
+  <div class="max-w-2xl mx-auto space-y-6">
+    <div class="bg-ink-900/60 p-5 rounded-2xl border border-white/5 backdrop-blur-md">
+      <h1 class="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+        <span>Upload Photos</span>
+      </h1>
+      <p class="text-xs text-gray-400 mt-1">
+        Direct web upload into your local library. Uploaded files are copied into full-resolution local storage.
+      </p>
+    </div>
 
     <UploadZone @files="onFiles" />
 
     <!-- Queue -->
-    <div v-if="queue.length" class="mt-6 space-y-2">
+    <div v-if="queue.length" class="space-y-3">
+      <div class="flex items-center justify-between text-xs text-gray-400 font-medium px-1">
+        <span>Upload Queue ({{ queue.length }} items)</span>
+        <button
+          v-if="!uploading"
+          class="text-gray-500 hover:text-white transition-colors"
+          @click="queue = []"
+        >Clear</button>
+      </div>
+
       <div
         v-for="item in queue"
         :key="item.name"
-        class="card p-3 flex items-center gap-3"
+        class="card p-3 flex items-center gap-3 bg-ink-900/80 border-white/5 shadow-md"
       >
         <img
           v-if="item.preview"
           :src="item.preview"
-          class="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+          class="w-12 h-12 object-cover rounded-xl flex-shrink-0 bg-ink-850"
         />
         <div class="flex-1 min-w-0">
-          <p class="text-sm truncate text-gray-300">{{ item.name }}</p>
-          <div class="mt-1.5 h-1.5 bg-ink-800 rounded-full overflow-hidden">
+          <p class="text-xs truncate font-medium text-gray-200">{{ item.name }}</p>
+          <div class="mt-2 h-1.5 bg-ink-850 rounded-full overflow-hidden border border-white/5">
             <div
               class="h-full rounded-full transition-all duration-300"
-              :class="item.status === 'error' ? 'bg-red-500' : item.status === 'done' ? 'bg-green-500' : 'bg-brand-gradient'"
+              :class="item.status === 'error' ? 'bg-rose-500' : item.status === 'done' ? 'bg-emerald-500' : 'bg-brand-gradient'"
               :style="{ width: (item.status === 'done' ? 100 : item.progress) + '%' }"
             />
           </div>
         </div>
-        <span class="text-sm flex-shrink-0 w-9 text-right" :class="item.status === 'done' ? 'text-green-400' : item.status === 'error' ? 'text-red-400' : 'text-gray-500'">
-          {{ item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : item.progress + '%' }}
+        <span
+          class="text-xs font-mono font-bold flex-shrink-0 w-10 text-right"
+          :class="item.status === 'done' ? 'text-emerald-400' : item.status === 'error' ? 'text-rose-400' : 'text-gray-400'"
+        >
+          {{ item.status === 'done' ? '✓' : item.status === 'error' ? '✕' : item.progress + '%' }}
         </span>
       </div>
 
-      <button v-if="!uploading" class="btn-primary w-full mt-2" @click="startUpload">
+      <button
+        v-if="!uploading"
+        class="btn-primary w-full py-2.5 text-xs font-semibold shadow-glow"
+        @click="startUpload"
+      >
         Upload {{ queue.length }} photo{{ queue.length !== 1 ? 's' : '' }}
       </button>
     </div>
 
-    <p v-if="doneCount" class="mt-4 text-center text-sm text-green-400">
-      {{ doneCount }} photo{{ doneCount !== 1 ? 's' : '' }} uploaded successfully
-    </p>
+    <div v-if="doneCount" class="card p-5 bg-emerald-950/20 border-emerald-500/30 text-center space-y-3 shadow-md">
+      <p class="text-xs sm:text-sm text-emerald-300 font-medium">
+        🎉 {{ doneCount }} photo{{ doneCount !== 1 ? 's' : '' }} uploaded successfully to your local library!
+      </p>
+      <router-link to="/cleanup" class="btn-primary text-xs py-2 px-5 inline-flex shadow-glow">
+        Next: Run Smart Cleanup →
+      </router-link>
+    </div>
   </div>
 </template>
 

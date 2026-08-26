@@ -129,19 +129,37 @@ async def person_photos(
 
 @router.post("/{person_id}/trash-photos")
 async def trash_person_photos(person_id: int, db: AsyncSession = Depends(get_db)):
-    """Send every (non-favorite) live photo of this person to Trash, undoably."""
+    """Send every (non-favorite) live photo of this person to Trash, undoably.
+
+    Safety: a photo is skipped — never bulk-trashed — if someone you've marked
+    "known" also appears in it (e.g. a group shot with a stranger in the
+    background). Those mixed photos need a manual look, not a blind bulk cull.
+    """
     person = await db.get(Person, person_id)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
 
+    # Photos where a *different* known person also has a face — protected.
+    known_person_ids = select(Person.id).where(Person.is_known == True)  # noqa: E712
+    mixed_photo_ids = select(distinct(Face.photo_id)).where(
+        Face.person_id.in_(known_person_ids), Face.person_id != person_id,
+    )
+
+    base_where = (Face.person_id == person_id, Photo.deleted_at.is_(None),
+                  Photo.is_favorite == False)  # noqa: E712
+
     photo_ids = (await db.execute(
-        select(distinct(Face.photo_id))
-        .join(Photo, Photo.id == Face.photo_id)
-        .where(Face.person_id == person_id, Photo.deleted_at.is_(None),
-               Photo.is_favorite == False)  # noqa: E712
+        select(distinct(Face.photo_id)).join(Photo, Photo.id == Face.photo_id)
+        .where(*base_where, Face.photo_id.not_in(mixed_photo_ids))
     )).scalars().all()
+    skipped_mixed = (await db.execute(
+        select(func.count(distinct(Face.photo_id))).select_from(Face)
+        .join(Photo, Photo.id == Face.photo_id)
+        .where(*base_where, Face.photo_id.in_(mixed_photo_ids))
+    )).scalar_one()
+
     if not photo_ids:
-        return {"deleted": 0, "batch": None}
+        return {"deleted": 0, "batch": None, "skipped_mixed": skipped_mixed}
 
     batch = uuid.uuid4().hex
     result = await db.execute(
@@ -150,7 +168,7 @@ async def trash_person_photos(person_id: int, db: AsyncSession = Depends(get_db)
     )
     db.add(DeletionLog(batch=batch, reason=f"person:{person.name or person_id}", count=result.rowcount))
     await db.commit()
-    return {"deleted": result.rowcount, "batch": batch}
+    return {"deleted": result.rowcount, "batch": batch, "skipped_mixed": skipped_mixed}
 
 
 class MergeIn(BaseModel):

@@ -1,51 +1,90 @@
 <template>
-  <div>
-    <div class="flex items-center justify-between mb-5">
-      <h1 class="text-2xl font-bold tracking-tight">Trash <span class="text-gray-500 font-normal text-base">({{ photos.length }})</span></h1>
-      <div class="flex gap-2">
-        <button v-if="photos.length" class="btn-ghost text-sm" @click="restoreAll">↩️ Restore all</button>
-        <button v-if="photos.length" class="btn-danger text-sm" @click="emptyTrash">🗑 Empty trash</button>
+  <div class="space-y-4">
+    <!-- Header Banner -->
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-ink-900/60 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
+      <div>
+        <h1 class="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+          <span>Trash & Recycle Bin</span>
+          <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-400/20">
+            {{ photos.length }} {{ photos.length === 1 ? 'item' : 'items' }}
+          </span>
+        </h1>
+        <p class="text-xs text-gray-400 mt-1">
+          Deleted items stay here safely until emptied. Originals in your folder are never touched if in-place mode is active.
+        </p>
+      </div>
+
+      <div v-if="photos.length" class="flex items-center gap-2 flex-wrap">
+        <button class="btn-ghost text-xs sm:text-sm py-2 px-3 text-emerald-400 hover:text-emerald-300" @click="restoreAll">
+          ↩️ Restore All
+        </button>
+        <button class="btn-danger text-xs sm:text-sm py-2 px-4 shadow-sm" @click="emptyTrash">
+          🗑 Empty Trash
+        </button>
       </div>
     </div>
 
-    <div v-if="loading" class="space-y-1">
-      <div v-for="i in 6" :key="i" class="card flex items-center gap-3 p-3">
-        <Skeleton width="3.5rem" height="3.5rem" rounded="rounded-xl" />
-        <div class="flex-1 space-y-2">
-          <Skeleton width="50%" height="0.8rem" />
-          <Skeleton width="25%" height="0.65rem" />
-        </div>
+    <!-- Skeletons -->
+    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div v-for="i in 12" :key="i" class="card p-2 space-y-2">
+        <Skeleton width="100%" height="8rem" rounded="rounded-xl" />
+        <Skeleton width="70%" height="0.7rem" />
       </div>
     </div>
 
-    <div v-else-if="photos.length" class="space-y-1">
+    <!-- Photos Grid in Trash -->
+    <div v-else-if="photos.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
       <div
         v-for="photo in photos"
         :key="photo.id"
-        class="card flex items-center gap-3 p-3"
+        class="card p-2.5 flex flex-col gap-2 bg-ink-900/80 border-white/5 group hover:border-white/20 transition-all shadow-md"
       >
-        <img
-          v-if="photo.thumbnail_url"
-          :src="photo.thumbnail_url"
-          class="w-14 h-14 object-cover rounded-xl flex-shrink-0"
-        />
-        <div class="flex-1 min-w-0">
-          <p class="text-sm truncate text-gray-300">{{ photo.filename }}</p>
-          <p class="text-xs text-gray-500 mt-0.5">Deleted {{ formatRelative(photo.deleted_at) }}</p>
+        <div class="aspect-square rounded-xl overflow-hidden bg-ink-850 relative">
+          <img
+            v-if="photo.thumbnail_url"
+            :src="photo.thumbnail_url"
+            class="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity"
+          />
+          <div v-else class="flex items-center justify-center w-full h-full text-2xl text-gray-600">🖼️</div>
+
+          <span class="absolute top-1.5 right-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-gray-300">
+            {{ formatRelative(photo.deleted_at) }}
+          </span>
         </div>
-        <div class="flex gap-2 flex-shrink-0">
-          <button class="btn-ghost text-xs" @click="restore(photo.id)">Restore</button>
-          <button class="btn-ghost text-xs text-red-400 hover:text-red-300" @click="permanentDelete(photo.id)">Delete forever</button>
+
+        <div class="px-0.5 min-w-0">
+          <p class="text-xs truncate font-medium text-gray-300" :title="photo.filename">{{ photo.filename }}</p>
+        </div>
+
+        <div class="flex items-center gap-1.5 pt-1 border-t border-white/5">
+          <button
+            class="flex-1 py-1 px-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-semibold transition-colors"
+            @click="restore(photo.id)"
+          >
+            Restore
+          </button>
+          <button
+            class="py-1 px-2 rounded-lg hover:bg-red-500/20 text-red-400 text-[11px] transition-colors"
+            title="Permanently remove"
+            @click="permanentDelete(photo.id)"
+          >
+            ✕
+          </button>
         </div>
       </div>
     </div>
 
+    <!-- Empty State -->
     <EmptyState
       v-else
       icon="🗑️"
-      title="Trash is empty"
-      subtitle="Deleted photos land here first, so you can always restore them."
-    />
+      title="Trash is clean and empty"
+      subtitle="Items moved to Trash from Triage, Duplicates, or Library will appear here for safe recovery."
+    >
+      <template #action>
+        <router-link to="/" class="btn-ghost text-sm">Return to Library</router-link>
+      </template>
+    </EmptyState>
   </div>
 </template>
 
@@ -78,42 +117,41 @@ async function load() {
 async function restore(id) {
   await photosApi.restore(id)
   photos.value = photos.value.filter((p) => p.id !== id)
-  success('Photo restored')
+  success('Photo restored to library')
 }
 
 async function permanentDelete(id) {
   const ok = await confirm({
-    title: 'Delete forever?',
-    message: 'This photo will be permanently removed. This cannot be undone.',
-    confirmText: 'Delete forever',
+    title: 'Permanently remove photo?',
+    message: 'This will erase the photo permanently. This action cannot be undone.',
+    confirmText: 'Delete Permanently',
     danger: true,
   })
   if (!ok) return
   await photosApi.permanentDelete(id)
   photos.value = photos.value.filter((p) => p.id !== id)
-  success('Photo permanently deleted')
+  success('Photo permanently removed')
 }
 
 async function restoreAll() {
   const n = photos.value.length
   await photosApi.bulkRestore(photos.value.map((p) => p.id))
   photos.value = []
-  success(`Restored ${n} photo${n > 1 ? 's' : ''}`)
+  success(`Restored ${n} photo${n > 1 ? 's' : ''} to library`)
 }
 
 async function emptyTrash() {
   const n = photos.value.length
   const ok = await confirm({
-    title: `Permanently delete ${n} photo${n > 1 ? 's' : ''}?`,
-    message: 'Everything in Trash will be gone for good. This cannot be undone.',
-    confirmText: 'Empty trash',
+    title: `Permanently delete all ${n} items in Trash?`,
+    message: 'All cached thumbnails and managed copies in Trash will be permanently erased. Originals in in-place folder mode will remain untouched.',
+    confirmText: 'Empty Trash',
     danger: true,
   })
   if (!ok) return
-  // Server-side: removes files + rows for everything in trash, not just loaded.
   await photosApi.emptyTrash()
   photos.value = []
-  success('Trash emptied')
+  success('Trash emptied successfully')
 }
 
 function formatRelative(iso) {
