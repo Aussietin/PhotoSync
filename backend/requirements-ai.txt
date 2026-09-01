@@ -15,7 +15,7 @@
 # an NVIDIA GPU, install the CUDA build of torch instead for a big speed-up
 # (see https://pytorch.org/get-started/locally/).
 sentence-transformers==2.7.0
-torch==2.2.2
+torch==2.13.0
 
 # Local face recognition (detect + cluster people) — ArcFace via ONNX Runtime,
 # CPU, fully on-device. The buffalo_l model pack (~300MB) downloads once on first
