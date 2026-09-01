@@ -22,4 +22,4 @@ torch==2.13.0
 # analyze. opencv-python-headless is InsightFace's image backend (no GUI libs).
 insightface==1.0.1
 onnxruntime==1.27.0
-opencv-python-headless==4.13.0.92
+opencv-python-headless==4.14.0.94
