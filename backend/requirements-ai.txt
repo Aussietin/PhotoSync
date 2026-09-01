@@ -14,12 +14,12 @@
 # torch is the CPU build — fine for an Intel/AMD laptop with no GPU. If you have
 # an NVIDIA GPU, install the CUDA build of torch instead for a big speed-up
 # (see https://pytorch.org/get-started/locally/).
-sentence-transformers==2.7.0
+sentence-transformers==6.0.0
 torch==2.13.0
 
 # Local face recognition (detect + cluster people) — ArcFace via ONNX Runtime,
 # CPU, fully on-device. The buffalo_l model pack (~300MB) downloads once on first
 # analyze. opencv-python-headless is InsightFace's image backend (no GUI libs).
 insightface==1.0.1
-onnxruntime==1.27.0
-opencv-python-headless==4.13.0.92
+onnxruntime==1.29.0
+opencv-python-headless==5.0.0.93
