@@ -7,6 +7,21 @@ updates:
     groups:
       all:
         patterns: ["*"]
+    ignore:
+      # ML-stack majors — each needs a deliberate upgrade pass with the
+      # embedding/CLIP pipeline actually exercised, not a Dependabot sweep.
+      - dependency-name: "torch"
+        versions: [">=2.3.0"]
+      - dependency-name: "sentence-transformers"
+        versions: [">=3.0.0"]
+      - dependency-name: "opencv-python-headless"
+        versions: [">=5.0.0"]
+      - dependency-name: "onnxruntime"
+        versions: [">=1.28.0"]
+      - dependency-name: "numpy"
+        versions: [">=2.0.0"]
+      - dependency-name: "fastapi"
+        versions: [">=0.110.0"]
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
@@ -14,6 +29,16 @@ updates:
     groups:
       all:
         patterns: ["*"]
+    ignore:
+      # Flat-config / Tailwind v4 / vue-router 5 are migrations, not sweeps.
+      - dependency-name: "eslint"
+        versions: [">=9.0.0"]
+      - dependency-name: "eslint-plugin-vue"
+        versions: [">=10.0.0"]
+      - dependency-name: "tailwindcss"
+        versions: [">=4.0.0"]
+      - dependency-name: "vue-router"
+        versions: [">=5.0.0"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
