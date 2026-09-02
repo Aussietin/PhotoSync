@@ -58,8 +58,14 @@ class Settings(BaseSettings):
     # roll, so they get their own cull category and badge.
     LARGE_FILE_MB: int = 25
 
-    # Trash retention: photos in trash older than this are eligible for auto-empty
+    # Trash retention: photos in trash older than this are eligible for auto-empty.
     TRASH_RETENTION_DAYS: int = 30
+    # When True, a startup sweep permanently deletes trashed photos older than
+    # TRASH_RETENTION_DAYS. Default False — the same safety-first stance as
+    # DELETE_IN_PLACE_ORIGINALS: nothing is auto-destroyed unless you opt in.
+    # The sweep still honours DELETE_IN_PLACE_ORIGINALS, so in-place folder-import
+    # originals are never removed regardless of this setting.
+    TRASH_AUTO_EMPTY: bool = False
 
     # SAFETY: when False (default), emptying Trash / permanent-delete only removes
     # files PhotoSync itself copied into uploads/ — it never deletes a folder-
