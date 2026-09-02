@@ -658,6 +658,80 @@ async def empty_trash(
     return {"permanently_deleted": removed}
 
 
+def _retention_cutoff() -> datetime:
+    from datetime import timedelta
+    return datetime.utcnow() - timedelta(days=settings.TRASH_RETENTION_DAYS)
+
+
+@router.get("/trash-status")
+async def trash_status(db: AsyncSession = Depends(get_db)):
+    """Retention policy + how much of Trash the auto-sweep would clear.
+
+    `expired` is the count/bytes of trashed photos already older than
+    TRASH_RETENTION_DAYS — i.e. what the next startup sweep removes when
+    TRASH_AUTO_EMPTY is on.
+    """
+    cutoff = _retention_cutoff()
+
+    async def _count_and_size(extra):
+        row = (await db.execute(
+            select(func.count(), func.coalesce(func.sum(Photo.file_size), 0))
+            .where(Photo.deleted_at.is_not(None), extra)
+        )).first()
+        return {"count": row[0], "bytes": int(row[1])}
+
+    total = await _count_and_size(Photo.deleted_at.is_not(None))
+    expired = await _count_and_size(Photo.deleted_at <= cutoff)
+    oldest = (await db.execute(
+        select(func.min(Photo.deleted_at)).where(Photo.deleted_at.is_not(None))
+    )).scalar()
+
+    return {
+        "auto_empty_enabled": settings.TRASH_AUTO_EMPTY,
+        "retention_days": settings.TRASH_RETENTION_DAYS,
+        "in_trash": total,
+        "expired": expired,
+        "oldest_deleted_at": oldest.isoformat() if oldest else None,
+    }
+
+
+async def sweep_expired_trash() -> int:
+    """Permanently delete trashed photos older than TRASH_RETENTION_DAYS.
+
+    No-op unless TRASH_AUTO_EMPTY is set. Called once at startup (see app.py
+    lifespan). Uses the same file-removal rules as empty-trash, so in-place
+    folder-import originals are preserved unless DELETE_IN_PLACE_ORIGINALS is on.
+
+    Looks up database.AsyncSessionLocal dynamically (not by name-import) so tests
+    can redirect it to an isolated in-memory DB — same pattern as services.jobs.
+    """
+    if not settings.TRASH_AUTO_EMPTY:
+        return 0
+
+    import database
+
+    cutoff = _retention_cutoff()
+    removed = 0
+    async with database.AsyncSessionLocal() as db:
+        photos = (await db.execute(
+            select(Photo).where(
+                Photo.deleted_at.is_not(None), Photo.deleted_at <= cutoff
+            )
+        )).scalars().all()
+        for photo in photos:
+            _remove_photo_files(photo)
+            await db.delete(photo)
+            removed += 1
+        await db.commit()
+
+    if removed:
+        logger.info(
+            "trash retention sweep: permanently removed %d photo(s) older than %d days",
+            removed, settings.TRASH_RETENTION_DAYS,
+        )
+    return removed
+
+
 # ── Library analysis (rescan flags for existing photos) ─────────────────────────
 
 @router.post("/analyze", status_code=status.HTTP_202_ACCEPTED)
