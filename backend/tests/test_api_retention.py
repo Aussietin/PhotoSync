@@ -11,7 +11,10 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from config import settings
+import pytest
+from pydantic import ValidationError
+
+from config import Settings, settings
 from models.photo import Photo
 from routes.photos import sweep_expired_trash
 
@@ -27,6 +30,11 @@ async def _seed(session, photos):
         session.add(p)
     await session.commit()
     return photos
+
+
+def test_retention_days_rejects_negative_values():
+    with pytest.raises(ValidationError):
+        Settings(TRASH_RETENTION_DAYS=-1)
 
 
 async def test_sweep_is_noop_when_disabled(client, db_session, monkeypatch):

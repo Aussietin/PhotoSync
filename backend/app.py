@@ -21,8 +21,9 @@ async def lifespan(app: FastAPI):
     await reap_stale_jobs()  # clear jobs left 'running' by a previous crash
 
     # Trash retention: permanently clear photos trashed longer ago than
-    # TRASH_RETENTION_DAYS. No-op unless TRASH_AUTO_EMPTY is set; never touches
-    # in-place folder-import originals. Failures here must not block startup.
+    # TRASH_RETENTION_DAYS. No-op unless TRASH_AUTO_EMPTY is set; in-place
+    # folder-import originals are preserved unless explicitly enabled for removal.
+    # Failures here must not block startup.
     try:
         from routes.photos import sweep_expired_trash
         await sweep_expired_trash()

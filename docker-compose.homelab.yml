@@ -32,6 +32,9 @@ services:
       # the DB on local disk by uncommenting this and bind-mounting the path:
       # - DATABASE_URL=sqlite+aiosqlite:////dblocal/photosync.db
       - API_TOKEN=${API_TOKEN:?Set API_TOKEN in a .env file next to this compose file (see README)}
+      # Opt-in permanent cleanup during startup. Set these in the Compose .env.
+      - TRASH_AUTO_EMPTY=${TRASH_AUTO_EMPTY:-false}
+      - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-30}
     volumes:
       - ${PHOTOSYNC_DATA:-photosync_data}:/data
       # DB-on-local-disk companion to the DATABASE_URL override above:

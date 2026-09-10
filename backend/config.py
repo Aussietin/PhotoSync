@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
@@ -59,7 +60,7 @@ class Settings(BaseSettings):
     LARGE_FILE_MB: int = 25
 
     # Trash retention: photos in trash older than this are eligible for auto-empty.
-    TRASH_RETENTION_DAYS: int = 30
+    TRASH_RETENTION_DAYS: int = Field(default=30, ge=0)
     # When True, a startup sweep permanently deletes trashed photos older than
     # TRASH_RETENTION_DAYS. Default False — the same safety-first stance as
     # DELETE_IN_PLACE_ORIGINALS: nothing is auto-destroyed unless you opt in.
