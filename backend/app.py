@@ -20,6 +20,16 @@ async def lifespan(app: FastAPI):
     from services.jobs import reap_stale_jobs
     await reap_stale_jobs()  # clear jobs left 'running' by a previous crash
 
+    # Trash retention: permanently clear photos trashed longer ago than
+    # TRASH_RETENTION_DAYS. No-op unless TRASH_AUTO_EMPTY is set; in-place
+    # folder-import originals are preserved unless explicitly enabled for removal.
+    # Failures here must not block startup.
+    try:
+        from routes.photos import sweep_expired_trash
+        await sweep_expired_trash()
+    except Exception:
+        logging.getLogger("photosync").exception("trash retention sweep failed")
+
     if not settings.API_TOKEN:
         logging.getLogger("photosync").warning(
             "\n"
