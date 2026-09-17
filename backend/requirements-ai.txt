@@ -20,6 +20,6 @@ torch==2.13.0
 # Local face recognition (detect + cluster people) — ArcFace via ONNX Runtime,
 # CPU, fully on-device. The buffalo_l model pack (~300MB) downloads once on first
 # analyze. opencv-python-headless is InsightFace's image backend (no GUI libs).
-insightface==1.0.1
+insightface==2.0
 onnxruntime==1.27.0
 opencv-python-headless==4.14.0.94
