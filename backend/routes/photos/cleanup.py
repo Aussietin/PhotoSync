@@ -33,10 +33,13 @@ class BulkIn(BaseModel):
 
 @router.post("/bulk/delete")
 async def bulk_delete(body: BulkIn, db: AsyncSession = Depends(get_db)):
+    # deleted_batch is cleared on every manual trash/restore: it marks "trashed
+    # by cleanup batch X", and a stale value let 'undo X' resurrect a photo the
+    # user had since restored and deliberately trashed again.
     result = await db.execute(
         update(Photo)
         .where(Photo.id.in_(body.photo_ids), Photo.deleted_at.is_(None))
-        .values(deleted_at=datetime.utcnow())
+        .values(deleted_at=datetime.utcnow(), deleted_batch=None)
     )
     await db.commit()
     return {"deleted": result.rowcount}
@@ -54,7 +57,7 @@ async def bulk_favorite(body: BulkIn, db: AsyncSession = Depends(get_db)):
 @router.post("/bulk/restore")
 async def bulk_restore(body: BulkIn, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        update(Photo).where(Photo.id.in_(body.photo_ids)).values(deleted_at=None)
+        update(Photo).where(Photo.id.in_(body.photo_ids)).values(deleted_at=None, deleted_batch=None)
     )
     await db.commit()
     return {"restored": result.rowcount}

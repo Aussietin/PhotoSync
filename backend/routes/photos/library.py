@@ -1,4 +1,5 @@
 """Read-only views over the library: lists, timeline, map, groupings, ZIP."""
+import asyncio
 import json
 import logging
 import os
@@ -139,6 +140,20 @@ async def list_trash(db: AsyncSession = Depends(get_db)):
     return {"photos": [_serialize(p) for p in result.scalars().all()]}
 
 
+def _write_zip(dest: str, entries: list[tuple[str, str, int]]) -> None:
+    """Write (file_path, archive_name, photo_id) entries into a ZIP at dest,
+    skipping files that have gone missing and de-duplicating archive names."""
+    seen: set[str] = set()
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path, name, photo_id in entries:
+            fp = Path(file_path)
+            if not fp.exists():
+                continue
+            arc = name if name not in seen else f"{photo_id}_{name}"
+            seen.add(arc)
+            zf.write(fp, arc)
+
+
 # ── ZIP download ──────────────────────────────────────────────────────────────
 
 class DownloadZipIn(BaseModel):
@@ -163,17 +178,10 @@ async def download_zip(body: DownloadZipIn, db: AsyncSession = Depends(get_db)):
 
     tmp = tempfile.NamedTemporaryFile(prefix="photosync-download-", suffix=".zip", delete=False)
     tmp.close()
-    seen: set[str] = set()
-    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in photos:
-            fp = Path(p.file_path)
-            if not fp.exists():
-                continue
-            arc = p.original_filename
-            if arc in seen:
-                arc = f"{p.id}_{p.original_filename}"
-            seen.add(arc)
-            zf.write(fp, arc)
+    entries = [(p.file_path, p.original_filename, p.id) for p in photos]
+    # Compressing a few thousand photos takes minutes; doing it inline froze
+    # the whole server for that long.
+    await asyncio.to_thread(_write_zip, tmp.name, entries)
 
     return FileResponse(
         tmp.name,

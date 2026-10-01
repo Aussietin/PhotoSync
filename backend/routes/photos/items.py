@@ -79,6 +79,7 @@ async def delete_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
     photo.deleted_at = datetime.utcnow()
+    photo.deleted_batch = None  # manual trash, not part of a cleanup batch (see cleanup.bulk_delete)
     await db.commit()
 
 
@@ -87,6 +88,11 @@ async def permanent_delete(photo_id: int, db: AsyncSession = Depends(get_db)):
     photo = await db.get(Photo, photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
+    # Permanent delete is the step *after* trash. Allowing it on a live photo
+    # meant one call took it straight from the library to gone, uploaded file
+    # included, skipping the trash / undo safety net entirely.
+    if photo.deleted_at is None:
+        raise HTTPException(status_code=409, detail="Move the photo to Trash before deleting it permanently")
     _remove_photo_files(photo)
     await db.delete(photo)
     await db.commit()
@@ -98,6 +104,7 @@ async def restore_photo(photo_id: int, db: AsyncSession = Depends(get_db)):
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
     photo.deleted_at = None
+    photo.deleted_batch = None
     await db.commit()
     return {"id": photo.id, "restored": True}
 

@@ -1,4 +1,5 @@
 """Background library analysis: flags, quality, previews, AI tags, faces, dupes."""
+import asyncio
 import json
 import logging
 import os
@@ -99,12 +100,14 @@ async def analyze_library(
 
             src = photo.thumbnail_path or photo.file_path
             if src and Path(src).exists():
-                flags = _classify(src, photo.width, photo.height)
+                # Pillow + numpy per photo: off the event loop, or job-progress
+                # polling (and the rest of the UI) stalls for the whole pass.
+                flags = await asyncio.to_thread(_classify, src, photo.width, photo.height)
                 photo.is_dark = flags["is_dark"]
                 photo.is_overexposed = flags["is_overexposed"]
                 photo.is_low_res = flags["is_low_res"]
                 if recompute_quality:
-                    score = recompute_quality_fn(src)
+                    score = await asyncio.to_thread(recompute_quality_fn, src)
                     if score is not None:
                         photo.quality_score = score
                         quality_updated += 1

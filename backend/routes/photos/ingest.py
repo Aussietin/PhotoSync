@@ -1,4 +1,5 @@
 """Getting photos in: browser upload and in-place folder import."""
+import asyncio
 import json
 import logging
 import os
@@ -40,6 +41,13 @@ async def upload_photos(
     results = []
     for file in files:
         orig_name = file.filename or "photo.jpg"
+        # Anything else was stored and then served same-origin from /uploads
+        # (an .html "photo" is stored XSS).
+        if not is_media(orig_name):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"'{orig_name}' is not a supported photo or video type.",
+            )
         # Reject oversized uploads before writing anything to disk. Starlette
         # populates UploadFile.size for multipart parts.
         if file.size is not None and file.size > max_bytes:
@@ -90,7 +98,11 @@ async def import_folder(body: FolderImportIn):
         raise HTTPException(status_code=400, detail="Path does not exist or is not a directory")
 
     pattern = "**/*" if body.recursive else "*"
-    files = [p for p in folder.glob(pattern) if p.is_file() and is_media(p.name)]
+    # Walking a 20k-file tree (often on a NAS mount) takes seconds; keep it off
+    # the event loop.
+    files = await asyncio.to_thread(
+        lambda: [p for p in folder.glob(pattern) if p.is_file() and is_media(p.name)]
+    )
 
     async def runner(session: AsyncSession, job) -> dict:
         from services.storage import _make_thumbnail, _make_preview

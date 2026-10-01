@@ -4,7 +4,7 @@ photosync — self-hosted photo library manager, 20 views.
 
 - **Stack:** Python, FastAPI, SQLAlchemy, Vue 3, Tailwind, Pillow
 - **Vault note:** `ProjectVault/01_Repositories/photosync.md` — read it for current status, history, and open loops before non-trivial work. It is canonical over anything stale here.
-- **Runtime preflight:** python + pip; pytest (74 backend tests)
+- **Runtime preflight:** python + pip; pytest (90 backend tests; media dirs are tmp-isolated by conftest)
 - **Deploy:** homelab; CI-published GHCR images via .github/workflows/docker-publish.yml -> docker-compose.homelab.yml
 
 ## Operating contract (Claude Code + Codex)

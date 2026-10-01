@@ -1,3 +1,4 @@
+import hmac
 import os
 from contextlib import asynccontextmanager
 
@@ -88,8 +89,8 @@ async def auth_guard(request: Request, call_next):
     if path in _PUBLIC_PATHS or not any(path.startswith(p) for p in _PROTECTED_PREFIXES):
         return await call_next(request)
 
-    token = request.headers.get("X-API-Token") or request.query_params.get("token")
-    if token != settings.API_TOKEN:
+    token = request.headers.get("X-API-Token") or request.query_params.get("token") or ""
+    if not hmac.compare_digest(token.encode(), settings.API_TOKEN.encode()):
         return JSONResponse({"detail": "Invalid or missing API token"}, status_code=401)
 
     return await call_next(request)
