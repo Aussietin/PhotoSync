@@ -9,7 +9,16 @@ logger = logging.getLogger("photosync")
 
 
 async def process_photo(file_path: Path, original_filename: str | None = None) -> dict[str, Any]:
-    """Extract metadata, perceptual hash, quality score, and screenshot flag."""
+    """Extract metadata, perceptual hash, quality score, and screenshot flag.
+
+    All CPU-bound (Pillow decode, phash, numpy), so it runs in a worker thread
+    rather than blocking the event loop for every photo imported.
+    """
+    import asyncio
+    return await asyncio.to_thread(_process_photo_sync, file_path, original_filename)
+
+
+def _process_photo_sync(file_path: Path, original_filename: str | None = None) -> dict[str, Any]:
     meta: dict[str, Any] = {}
 
     try:

@@ -10,6 +10,7 @@ import sys
 from unittest.mock import patch, AsyncMock
 from pathlib import Path
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
@@ -31,6 +32,18 @@ import models.photo  # noqa: F401 — registers every table on Base.metadata bef
 # Create them now (they're git-ignored); tests never write real files here.
 for _d in (settings.UPLOAD_DIR, settings.THUMBNAIL_DIR, settings.PREVIEW_DIR):
     os.makedirs(_d, exist_ok=True)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_media_dirs(tmp_path, monkeypatch):
+    """Point every media dir at tmp_path. Uploads in tests used to land in
+    backend/uploads -- the real local library -- leaving 0/11-byte test files
+    behind on every run. (The StaticFiles mounts still point at the real dirs,
+    bound at import; no test serves media through them.)"""
+    for name in ("UPLOAD_DIR", "THUMBNAIL_DIR", "PREVIEW_DIR", "FACE_DIR"):
+        d = tmp_path / "media" / name.lower()
+        d.mkdir(parents=True)
+        monkeypatch.setattr(settings, name, str(d))
 
 
 @pytest_asyncio.fixture
