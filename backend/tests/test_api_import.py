@@ -87,7 +87,7 @@ async def test_import_folder_survives_one_bad_file(client, tmp_path, monkeypatch
     _make_jpeg(tmp_path / "bad.jpg", seed=4)
     _make_jpeg(tmp_path / "good2.jpg", seed=5)
 
-    from routes import photos as photos_route
+    from routes.photos import ingest as photos_route
 
     real_process_photo = photos_route.process_photo
 
