@@ -12,4 +12,4 @@ exifread==3.5.1
 numpy==1.26.4
 httpx==0.28.1
 alembic==1.19.1
-Mako==1.4.1
+Mako==1.4.2
