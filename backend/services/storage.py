@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -22,7 +23,7 @@ async def save_upload(file: UploadFile) -> tuple[Path, Path | None, Path | None,
     dest = Path(settings.UPLOAD_DIR) / f"{stem}{suffix}"
 
     data = await file.read()
-    dest.write_bytes(data)
+    await asyncio.to_thread(dest.write_bytes, data)
 
     if is_video(file.filename or ""):
         return dest, None, None, len(data)
@@ -49,12 +50,15 @@ def _downscale_jpeg(source: Path, out: Path, size) -> Path | None:
         return None
 
 
+# Decoding a 12 MP HEIC takes ~0.5 s of pure CPU. These used to run inline in
+# their async callers, freezing every other request (and job-progress polling)
+# for the duration -- per photo, across a 20k-photo import.
 async def _make_thumbnail(source: Path, stem: str) -> Path | None:
     out = Path(settings.THUMBNAIL_DIR) / f"{stem}_thumb.jpg"
-    return _downscale_jpeg(source, out, settings.THUMBNAIL_SIZE)
+    return await asyncio.to_thread(_downscale_jpeg, source, out, settings.THUMBNAIL_SIZE)
 
 
 async def _make_preview(source: Path, stem: str) -> Path | None:
     """Web-friendly JPEG so HEIC/large originals display in any browser."""
     out = Path(settings.PREVIEW_DIR) / f"{stem}_preview.jpg"
-    return _downscale_jpeg(source, out, settings.PREVIEW_SIZE)
+    return await asyncio.to_thread(_downscale_jpeg, source, out, settings.PREVIEW_SIZE)
