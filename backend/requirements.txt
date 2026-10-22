@@ -2,7 +2,7 @@ fastapi==0.109.2
 pydantic-settings==2.15.0
 uvicorn[standard]==0.52.4
 python-multipart==0.0.32
-Pillow==12.3.0
+Pillow==13.0.0
 pillow-heif==1.6.0
 SQLAlchemy==2.0.52
 aiosqlite==0.22.1
