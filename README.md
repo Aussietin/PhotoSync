@@ -1,10 +1,8 @@
 # PhotoSync
 
-![PhotoSync: a grid of photo placeholders and the caption "photosync - local, offline"](docs/social-card.png)
-
 A self-hosted photo library with a responsive web interface. It runs on your own
-machine or server, searches photos with a local CLIP model, and sends nothing to
-a cloud service. State: public code that I run on my homelab; still changing.
+machine or server, can search photos with an optional local CLIP model, and sends nothing to
+a cloud service once the one-time model downloads are done. State: public code that I run on my homelab; still changing.
 
 ## Features
 
