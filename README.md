@@ -1,13 +1,18 @@
 # PhotoSync
 
-A Python-powered photo organizer with a responsive web interface, built to manage large photo libraries (20,000+ photos) from iPhone.
+![PhotoSync: a grid of photo placeholders and the caption "photosync - local, offline"](docs/social-card.png)
+
+A self-hosted photo library with a responsive web interface. It runs on your own
+machine or server, searches photos with a local CLIP model, and sends nothing to
+a cloud service. State: public code that I run on my homelab; still changing.
 
 ## Features
 
-- **Auto-tagging** — AI/ML-based image tagging using scene and object detection
+- **Auto-tagging and semantic search** — optional on-device CLIP model (off by default; falls back to a colour heuristic)
+- **Face grouping** — optional on-device face detection and clustering into people you can name (needs the AI extras)
 - **Duplicate detection** — Perceptual hashing to find and remove duplicates
 - **Timeline view** — Browse photos chronologically by date taken (EXIF)
-- **Smart search** — Search by tags, dates, objects, and metadata
+- **Search** — by tags, dates and metadata
 - **Batch operations** — Select and act on multiple photos at once
 - **Mobile-first UI** — Responsive interface accessible from iPhone browser
 
@@ -152,7 +157,6 @@ colour heuristic.
 
 ## Roadmap
 
-- [ ] Face recognition clustering
 - [ ] Quality scoring (blur, exposure)
 - [ ] Album / collection management
 - [ ] Cloud backup integration (iCloud, S3)
@@ -160,4 +164,4 @@ colour heuristic.
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
