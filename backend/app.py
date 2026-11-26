@@ -1,3 +1,4 @@
+import hmac
 import os
 from contextlib import asynccontextmanager
 
@@ -19,6 +20,16 @@ async def lifespan(app: FastAPI):
         os.makedirs(d, exist_ok=True)
     from services.jobs import reap_stale_jobs
     await reap_stale_jobs()  # clear jobs left 'running' by a previous crash
+
+    # Trash retention: permanently clear photos trashed longer ago than
+    # TRASH_RETENTION_DAYS. No-op unless TRASH_AUTO_EMPTY is set; in-place
+    # folder-import originals are preserved unless explicitly enabled for removal.
+    # Failures here must not block startup.
+    try:
+        from routes.photos import sweep_expired_trash
+        await sweep_expired_trash()
+    except Exception:
+        logging.getLogger("photosync").exception("trash retention sweep failed")
 
     if not settings.API_TOKEN:
         logging.getLogger("photosync").warning(
@@ -78,8 +89,8 @@ async def auth_guard(request: Request, call_next):
     if path in _PUBLIC_PATHS or not any(path.startswith(p) for p in _PROTECTED_PREFIXES):
         return await call_next(request)
 
-    token = request.headers.get("X-API-Token") or request.query_params.get("token")
-    if token != settings.API_TOKEN:
+    token = request.headers.get("X-API-Token") or request.query_params.get("token") or ""
+    if not hmac.compare_digest(token.encode(), settings.API_TOKEN.encode()):
         return JSONResponse({"detail": "Invalid or missing API token"}, status_code=401)
 
     return await call_next(request)
